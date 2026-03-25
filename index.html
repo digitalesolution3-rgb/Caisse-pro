@@ -5,8 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Caisse Pro">
 <meta name="theme-color" content="#0A0E12">
-<title>Caisse SaaS Pro - Abonnements + BLE Print + Dépenses & Bénéfices</title>
+<meta name="description" content="Caisse SaaS Pro - Gestion de caisse, abonnements, dépenses et bénéfices">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<title>Caisse SaaS Pro - Gestion de caisse + Dépenses & Bénéfices</title>
 
 <!-- Firebase SDK -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.7.1/firebase-app-compat.min.js"></script>
@@ -44,10 +51,33 @@ button:active{opacity:.72!important;transform:scale(.96)!important}
 @media (max-width: 959px) {
   .product-grid { grid-template-columns: repeat(2, 1fr) !important; }
 }
+@media (display-mode: standalone) {
+  body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+}
 </style>
 </head>
 <body>
 <div id="root"></div>
+
+<script>
+// Enregistrement du Service Worker pour PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(registration => console.log('SW enregistré:', registration.scope))
+      .catch(error => console.log('Erreur SW:', error));
+  });
+}
+
+// Gestion de l'installation PWA
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  // Afficher un bouton d'installation si nécessaire
+  window.dispatchEvent(new CustomEvent('pwa-install-ready', { detail: deferredPrompt }));
+});
+</script>
 
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
@@ -129,7 +159,7 @@ function syncShopData(shopId, setProducts, setSales, setStockMovements, setExpen
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  IMPRESSION BLE - ESC/POS 80mm (conservé inchangé)
+//  IMPRESSION BLE - ESC/POS 80mm
 // ══════════════════════════════════════════════════════════════════
 class BLEPrinter {
   constructor() { this.device = null; this.server = null; this.characteristic = null; this.connected = false; this.listeners = []; this.reconnecting = false; this._keepAliveTimer = null; this._printing = false; }
@@ -153,7 +183,7 @@ async function printViaBLE(shopName, shopPhone, items, total, invoiceNum) { if (
 function printFallback(shopName, shopPhone, items, total, invoiceNum) { let html = `<html><head><meta charset="utf-8"><title>Ticket</title><style>body{font-family:monospace;width:70mm;margin:0 auto;padding:10px}.center{text-align:center}.item{display:flex;justify-content:space-between;margin:3px 0}.total{display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px dashed #000;font-weight:bold}</style></head><body>`; html += `<div class="center bold">${shopName.toUpperCase()}</div>`; if(shopPhone) html += `<div class="center">Tel: ${shopPhone}</div>`; html += `<div class="center">${new Date().toLocaleString()}</div>`; if(invoiceNum) html += `<div class="center">N° ${String(invoiceNum).slice(-8)}</div><hr>`; items.forEach(it => { const qty=it.qty||1; html += `<div class="item"><span>${it.label}${qty>1?` x${qty}`:''}</span><span>${fmtPrice(it.amount*qty)}</span></div>`; if(qty>1) html += `<div style="font-size:10px;margin-left:8px;">@ ${fmtPrice(it.amount)}</div>`; }); html += `<hr><div class="total"><span>TOTAL</span><span>${fmtPrice(total)}</span></div><hr><div class="center">Merci !</div></body></html>`; const win = window.open("", "_blank", "width=400,height=600"); if(win) { win.document.write(html); win.document.close(); win.print(); setTimeout(()=>win.close(),1500); } }
 
 // ══════════════════════════════════════════════════════════════════
-//  COMPOSANT BANDE D'ABONNEMENT (inchangé)
+//  COMPOSANT BANDE D'ABONNEMENT
 // ══════════════════════════════════════════════════════════════════
 function SubscriptionBanner({ T, shopId }) {
   const [subscription, setSubscription] = useState(null); const [loading, setLoading] = useState(true);
@@ -187,7 +217,7 @@ function VenteRapide({ T, addSale, flashMsg }) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  APP AUTH (inchangé mais intégration des dépenses)
+//  APP AUTH
 // ══════════════════════════════════════════════════════════════════
 function App() {
   const [themeName, setThemeName] = useState(()=>localStorage.getItem("pos_theme")||"dark"); const T = THEMES[themeName];
@@ -299,7 +329,7 @@ function PanierContent({ T, items, setItems, total, addSale, flashMsg, useBLE })
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  NOUVEAU COMPOSANT : GESTION DES DÉPENSES + BÉNÉFICES
+//  GESTION DES DÉPENSES + BÉNÉFICES
 // ══════════════════════════════════════════════════════════════════
 function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, flashMsg, shopId, stockMovements, updateStock, updateAdminPin, expenses, addExpense }) {
   const [tab, setTab] = useState("dashboard");
@@ -320,7 +350,6 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
   const currentMonth = new Date().toISOString().slice(0,7);
   const currentYear = new Date().toISOString().slice(0,4);
   
-  // Calculs des ventes
   const todaySales = (sales || []).filter(s => s.date === today && !s.cancelled);
   const monthSales = (sales || []).filter(s => s.date?.startsWith(currentMonth) && !s.cancelled);
   const yearSales = (sales || []).filter(s => s.date?.startsWith(currentYear) && !s.cancelled);
@@ -329,7 +358,6 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
   const revenueMonth = monthSales.reduce((a,b)=>a+(b.total||0),0);
   const revenueYear = yearSales.reduce((a,b)=>a+(b.total||0),0);
   
-  // Calculs des dépenses
   const todayExpenses = (expenses || []).filter(e => getDateKey(e.timestamp) === today);
   const monthExpenses = (expenses || []).filter(e => getMonthKey(e.timestamp) === currentMonth);
   const yearExpenses = (expenses || []).filter(e => getYearKey(e.timestamp) === currentYear);
@@ -338,7 +366,6 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
   const expensesMonth = monthExpenses.reduce((a,b)=>a+(b.amount||0),0);
   const expensesYear = yearExpenses.reduce((a,b)=>a+(b.amount||0),0);
   
-  // Bénéfices
   const profitToday = revenueToday - expensesToday;
   const profitMonth = revenueMonth - expensesMonth;
   const profitYear = revenueYear - expensesYear;
