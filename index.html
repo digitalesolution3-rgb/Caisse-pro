@@ -1458,6 +1458,250 @@ function PanierContent({ T, items, setItems, total, addSale, addCredit, flashMsg
   );
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  COMMANDES FOURNISSEUR
+// ══════════════════════════════════════════════════════════════════
+function CommandesFournisseur({ T, products, flashMsg, shopId, updateStock }) {
+  const ligneVide = () => ({ id: Date.now() + Math.random(), produitId: "", nom: "", libelle: "", prixUnitaire: 0, quantite: 1, montant: 0 });
+  const [lignes, setLignes] = useState([ligneVide()]);
+  const [commandes, setCommandes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [view, setView] = useState("new"); // "new" | "history"
+
+  useEffect(() => {
+    if (!db || !shopId) { setLoading(false); return; }
+    const unsub = db.collection("shops").doc(shopId).collection("commandes_fournisseur")
+      .orderBy("createdAt", "desc")
+      .onSnapshot(snap => {
+        setCommandes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setLoading(false);
+      }, () => setLoading(false));
+    return unsub;
+  }, [shopId]);
+
+  // ── Calculs ────────────────────────────────────────────────────
+  const calculerMontant = (ligne) => Math.round((parseFloat(ligne.prixUnitaire) || 0) * (parseInt(ligne.quantite) || 0));
+  const total = lignes.reduce((s, l) => s + calculerMontant(l), 0);
+
+  // ── Mise à jour d'une ligne ────────────────────────────────────
+  const updateLigne = (id, field, val) => {
+    setLignes(prev => prev.map(l => {
+      if (l.id !== id) return l;
+      const updated = { ...l, [field]: val };
+      // Pré-remplir depuis le produit sélectionné
+      if (field === "produitId") {
+        const prod = products.find(p => p.id === val);
+        if (prod) {
+          updated.nom = prod.name;
+          updated.libelle = prod.name;
+          updated.prixUnitaire = prod.prixAchat || 0;
+        } else {
+          updated.nom = ""; updated.libelle = ""; updated.prixUnitaire = 0;
+        }
+      }
+      updated.montant = Math.round((parseFloat(updated.prixUnitaire) || 0) * (parseInt(updated.quantite) || 0));
+      return updated;
+    }));
+  };
+
+  const ajouterLigne = () => setLignes(prev => [...prev, ligneVide()]);
+  const supprimerLigne = (id) => {
+    if (lignes.length === 1) { flashMsg("Au moins une ligne requise"); return; }
+    setLignes(prev => prev.filter(l => l.id !== id));
+  };
+
+  // ── Enregistrer commande ───────────────────────────────────────
+  const enregistrerCommande = async () => {
+    const lignesValides = lignes.filter(l => (l.libelle || l.nom).trim() && parseInt(l.quantite) > 0);
+    if (lignesValides.length === 0) { flashMsg("⚠️ Ajoutez au moins une ligne valide"); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        lignes: lignesValides.map(l => ({
+          produitId: l.produitId || null,
+          nom: l.nom || l.libelle,
+          libelle: l.libelle || l.nom,
+          prixUnitaire: parseFloat(l.prixUnitaire) || 0,
+          quantite: parseInt(l.quantite) || 0,
+          montant: calculerMontant(l)
+        })),
+        total,
+        statut: "en_attente",
+        createdAt: Date.now()
+      };
+      await db.collection("shops").doc(shopId).collection("commandes_fournisseur").add(payload);
+      setLignes([ligneVide()]);
+      flashMsg("✅ Commande enregistrée !");
+      setView("history");
+    } catch (e) { flashMsg("❌ Erreur: " + e.message); }
+    setSaving(false);
+  };
+
+  // ── Marquer comme reçu ────────────────────────────────────────
+  const marquerCommeRecu = async (cmd) => {
+    if (!window.confirm(`Confirmer la réception de cette commande ?\nLe stock sera mis à jour automatiquement.`)) return;
+    try {
+      // Mettre à jour stock pour chaque ligne avec produitId connu
+      for (const ligne of cmd.lignes) {
+        if (ligne.produitId && ligne.quantite > 0) {
+          await updateStock(ligne.produitId, parseInt(ligne.quantite), "entree", `Commande fournisseur #${cmd.id.slice(-6)}`);
+        }
+      }
+      await db.collection("shops").doc(shopId).collection("commandes_fournisseur").doc(cmd.id).update({ statut: "recu", recuAt: Date.now() });
+      flashMsg("✅ Stock mis à jour — Commande reçue !");
+    } catch (e) { flashMsg("❌ Erreur: " + e.message); }
+  };
+
+  const supprimerCommande = async (id) => {
+    if (!window.confirm("Supprimer cette commande ?")) return;
+    try {
+      await db.collection("shops").doc(shopId).collection("commandes_fournisseur").doc(id).delete();
+      flashMsg("🗑️ Commande supprimée");
+    } catch (e) { flashMsg("❌ Erreur: " + e.message); }
+  };
+
+  const prodStock = (prodId) => { const p = products.find(x => x.id === prodId); return p ? (p.stock === -1 ? "∞" : p.stock) : null; };
+
+  return (
+    <div>
+      {/* Toggle New / History */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, background: T.surface2, borderRadius: 12, padding: 4 }}>
+        <button onClick={() => setView("new")} style={{ flex: 1, background: view === "new" ? T.accent : "transparent", border: "none", borderRadius: 8, padding: "8px", fontWeight: 700, color: view === "new" ? T.bg : T.textSub, fontSize: 12 }}>➕ Nouvelle commande</button>
+        <button onClick={() => setView("history")} style={{ flex: 1, background: view === "history" ? T.accent : "transparent", border: "none", borderRadius: 8, padding: "8px", fontWeight: 700, color: view === "history" ? T.bg : T.textSub, fontSize: 12 }}>📋 Historique ({commandes.length})</button>
+      </div>
+
+      {/* ── NOUVELLE COMMANDE ── */}
+      {view === "new" && (
+        <div>
+          <div style={{ background: T.surface, borderRadius: 16, padding: 14, marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, color: T.text }}>🚚 Bon de commande fournisseur</div>
+
+            {lignes.map((ligne, idx) => (
+              <div key={ligne.id} style={{ background: T.surface2, borderRadius: 12, padding: 12, marginBottom: 10, border: `1px solid ${T.border}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: T.textMute }}>Ligne {idx + 1}</span>
+                  <button onClick={() => supprimerLigne(ligne.id)} style={{ background: T.btnRed.bg, border: "none", borderRadius: 8, width: 28, height: 28, color: T.red, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                </div>
+
+                {/* Sélecteur produit */}
+                <select value={ligne.produitId} onChange={e => updateLigne(ligne.id, "produitId", e.target.value)}
+                  style={{ width: "100%", background: T.inputBg, border: `1px solid ${T.inputBd}`, borderRadius: 10, padding: "9px 10px", marginBottom: 8, color: T.text, fontSize: 12 }}>
+                  <option value="">— Sélectionner produit (optionnel) —</option>
+                  {products.filter(p => p.active !== false).map(p => (
+                    <option key={p.id} value={p.id}>{p.name}{p.stock !== undefined && p.stock !== null && p.stock !== -1 ? ` (stock: ${p.stock})` : ""}</option>
+                  ))}
+                </select>
+
+                {/* Libellé libre */}
+                <input placeholder="Libellé / description *" value={ligne.libelle} onChange={e => updateLigne(ligne.id, "libelle", e.target.value)}
+                  style={{ width: "100%", background: T.inputBg, border: `1px solid ${T.inputBd}`, borderRadius: 10, padding: "9px 10px", marginBottom: 8, color: T.text, fontSize: 12 }} />
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 6 }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: T.textMute, marginBottom: 3 }}>Prix unitaire (F)</div>
+                    <input type="number" min="0" placeholder="0" value={ligne.prixUnitaire || ""}
+                      onChange={e => updateLigne(ligne.id, "prixUnitaire", e.target.value)}
+                      style={{ width: "100%", background: T.inputBg, border: `1px solid ${T.inputBd}`, borderRadius: 10, padding: "9px 10px", color: T.text, fontSize: 13, fontWeight: 600 }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: T.textMute, marginBottom: 3 }}>Quantité</div>
+                    <input type="number" min="1" placeholder="1" value={ligne.quantite || ""}
+                      onChange={e => updateLigne(ligne.id, "quantite", e.target.value)}
+                      style={{ width: "100%", background: T.inputBg, border: `1px solid ${T.inputBd}`, borderRadius: 10, padding: "9px 10px", color: T.text, fontSize: 13, fontWeight: 600 }} />
+                  </div>
+                </div>
+
+                {/* Montant calculé */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: T.bg, borderRadius: 8, padding: "7px 12px" }}>
+                  <span style={{ fontSize: 11, color: T.textMute }}>Montant</span>
+                  <span style={{ fontWeight: 800, fontSize: 15, color: calculerMontant(ligne) > 0 ? T.accent : T.textMute }}>{fmtPrice(calculerMontant(ligne))}</span>
+                </div>
+              </div>
+            ))}
+
+            {/* Bouton ajouter ligne */}
+            <button onClick={ajouterLigne} style={{ width: "100%", background: T.btnBlue.bg, border: `1px dashed ${T.blue}`, borderRadius: 12, padding: 12, color: T.blue, fontWeight: 700, fontSize: 13, marginBottom: 12 }}>➕ Ajouter une ligne</button>
+
+            {/* Total */}
+            <div style={{ background: total > 0 ? T.btnGreen.bg : T.surface2, border: `2px solid ${total > 0 ? T.green : T.border}`, borderRadius: 14, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <span style={{ fontWeight: 700, fontSize: 14 }}>TOTAL COMMANDE</span>
+              <span style={{ fontSize: 22, fontWeight: 800, color: total > 0 ? T.green : T.textMute }}>{fmtPrice(total)}</span>
+            </div>
+
+            {/* Bouton enregistrer */}
+            <button onClick={enregistrerCommande} disabled={saving || total === 0}
+              style={{ width: "100%", background: total > 0 ? T.accent : T.surface2, border: "none", borderRadius: 14, padding: "14px", fontWeight: 800, fontSize: 14, color: total > 0 ? T.bg : T.textMute, opacity: saving ? 0.7 : 1 }}>
+              {saving ? "⏳ Enregistrement..." : "💾 Enregistrer la commande"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── HISTORIQUE ── */}
+      {view === "history" && (
+        <div>
+          {loading && <div className="spin" style={{ width: 28, height: 28, border: `2px solid ${T.border}`, borderTopColor: T.accent, borderRadius: "50%", margin: "20px auto" }}></div>}
+          {!loading && commandes.length === 0 && (
+            <div style={{ textAlign: "center", padding: 40, color: T.textMute, fontSize: 12 }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
+              Aucune commande enregistrée
+            </div>
+          )}
+          {commandes.map(cmd => {
+            const recu = cmd.statut === "recu";
+            const borderColor = recu ? T.green : T.orange;
+            const d = new Date(cmd.createdAt);
+            const dateStr = `${d.getDate().toString().padStart(2,"0")}/${(d.getMonth()+1).toString().padStart(2,"0")}/${d.getFullYear()}`;
+            return (
+              <div key={cmd.id} style={{ background: T.surface, borderRadius: 16, padding: 14, marginBottom: 12, borderLeft: `4px solid ${borderColor}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: T.textMute }}>#{cmd.id.slice(-6).toUpperCase()} · {dateStr}</div>
+                    <div style={{ fontWeight: 800, fontSize: 18, color: T.accent }}>{fmtPrice(cmd.total)}</div>
+                    <div style={{ fontSize: 11, marginTop: 2 }}>
+                      <span style={{ background: recu ? T.btnGreen.bg : T.btnRed.bg, color: recu ? T.green : T.orange, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>
+                        {recu ? "✅ REÇUE" : "⏳ EN ATTENTE"}
+                      </span>
+                    </div>
+                  </div>
+                  <button onClick={() => supprimerCommande(cmd.id)} style={{ background: T.btnRed.bg, border: "none", borderRadius: 8, padding: "5px 9px", color: T.red, fontSize: 14 }}>🗑️</button>
+                </div>
+
+                {/* Lignes */}
+                {(cmd.lignes || []).map((l, i) => (
+                  <div key={i} style={{ background: T.surface2, borderRadius: 8, padding: "7px 10px", marginBottom: 5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.libelle || l.nom}</div>
+                      <div style={{ fontSize: 10, color: T.textMute }}>{fmtPrice(l.prixUnitaire)} × {l.quantite}
+                        {l.produitId && <span style={{ marginLeft: 6, color: T.blue }}>({(() => { const s = prodStock(l.produitId); return s !== null ? `stock actuel: ${s}` : ""; })()})</span>}
+                      </div>
+                    </div>
+                    <span style={{ fontWeight: 700, fontSize: 13, marginLeft: 10, flexShrink: 0 }}>{fmtPrice(l.montant)}</span>
+                  </div>
+                ))}
+
+                {/* Bouton réception */}
+                {!recu && (
+                  <button onClick={() => marquerCommeRecu(cmd)}
+                    style={{ marginTop: 10, width: "100%", background: T.green, border: "none", borderRadius: 12, padding: "11px", fontWeight: 700, color: T.bg, fontSize: 13 }}>
+                    📦 Marquer comme REÇUE → Mettre à jour le stock
+                  </button>
+                )}
+                {recu && cmd.recuAt && (
+                  <div style={{ marginTop: 8, fontSize: 10, color: T.textMute, textAlign: "center" }}>
+                    ✅ Reçue le {new Date(cmd.recuAt).toLocaleDateString("fr-FR")}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, flashMsg, shopId, stockMovements, updateStock, updateAdminPin, credits, payCredit, caissiers, saveCaissier, deleteCaissier, loginCaissier, currentCaissier }) {
   const [tab, setTab] = useState("stats");
   const [showForm, setShowForm] = useState(false);
@@ -1564,7 +1808,7 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
   return (
     <div style={{flex:1, overflowY:"auto", padding:12}}>
       <div style={{display:"flex", gap:5, marginBottom:14, flexWrap:"wrap", overflowX:"auto", paddingBottom:4}}>
-        {[["stats","📊 Stats"],["analytics","📈 Analyse"],["products","📦 Produits"],["stock","📋 Stock"],["reappro","🔄 Réappro"],["dettes","💳 Dettes"],["caissiers","👥 Caissiers"],["sales","🧾 Ventes"],["settings","⚙️ Param."]].map(([k,l])=>(
+        {[["stats","📊 Stats"],["analytics","📈 Analyse"],["products","📦 Produits"],["stock","📋 Stock"],["reappro","🔄 Réappro"],["commandes","🚚 Commandes"],["dettes","💳 Dettes"],["caissiers","👥 Caissiers"],["sales","🧾 Ventes"],["settings","⚙️ Param."]].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{background:tab===k?T.accent:T.surface, borderRadius:12, padding:"7px 12px", flexShrink:0, fontSize:11, fontWeight:600, color:tab===k?T.bg:T.text}}>{l}</button>
         ))}
       </div>
@@ -1704,6 +1948,11 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
             ))}
           </div>
         </div>
+      )}
+
+      {/* ── COMMANDES FOURNISSEUR ── */}
+      {tab==="commandes" && (
+        <CommandesFournisseur T={T} products={products} flashMsg={flashMsg} shopId={shopId} updateStock={updateStock} />
       )}
 
       {/* ── DETTES ── */}
