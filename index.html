@@ -1284,7 +1284,8 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase());
     return matchCat && matchSearch;
   });
-  const todaySales = (sales || []).filter(s => s.date === new Date().toISOString().slice(0,10) && !s.cancelled);
+  const todaySalesAll = (sales || []).filter(s => s.date === new Date().toISOString().slice(0,10));
+  const todaySales = todaySalesAll.filter(s => !s.cancelled);
   
   const addProduct = (p) => {
     if (p.stock !== undefined && p.stock !== null && p.stock !== -1 && p.stock <= 0) { flashMsg(`⚠️ ${p.name} en rupture`); return; }
@@ -1356,12 +1357,12 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
               ))}
             </div>
           )}
-          <div className="product-grid" style={{display:"grid", gap:8}}>
+          <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:8, overflowY:"auto", maxHeight:"calc(100vh - 280px)", paddingBottom:8}}>
             {filtered.map(p => (
-              <button key={p.id} onClick={()=>addProduct(p)} style={{background:T.surface, border:`1px solid ${T.border}`, borderRadius:12, padding:10, textAlign:"left"}}>
-                <div style={{fontWeight:600, fontSize:13}}>{p.name}</div>
-                <div style={{fontSize:11, color:T.accent, fontWeight:700}}>{fmtPrice(p.price)}</div>
-                {p.category && <div style={{fontSize:9, color:T.textMute}}>{p.category}</div>}
+              <button key={p.id} onClick={()=>addProduct(p)} style={{background:T.surface, border:`1px solid ${T.border}`, borderRadius:12, padding:10, textAlign:"left", minWidth:0}}>
+                <div style={{fontWeight:600, fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p.name}</div>
+                <div style={{fontSize:12, color:T.accent, fontWeight:700}}>{fmtPrice(p.price)}</div>
+                {p.category && <div style={{fontSize:9, color:T.textMute, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p.category}</div>}
                 {p.stock !== undefined && p.stock !== null && p.stock !== -1 && <div style={{fontSize:9, color:p.stock<=5?T.red:T.textMute}}>Stock: {p.stock}</div>}
               </button>
             ))}
@@ -1379,31 +1380,129 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
       
       {view === "rapide" && <VenteRapide T={T} addSale={addSale} flashMsg={flashMsg} />}
       
-      {view === "annulations" && (
-        <div>
-          {todaySales.length===0 ? <div style={{textAlign:"center", padding:40, color:T.textMute}}>Aucune vente aujourd'hui</div> :
-            todaySales.map(s=>(
-              <div key={s.id} style={{background:T.surface, borderRadius:12, padding:12, marginBottom:8}}>
-                <div style={{display:"flex", justifyContent:"space-between"}}><span>{new Date(s.timestamp).toLocaleTimeString()}</span><span>{fmtPrice(s.total)}</span></div>
-                {s.caissier && <div style={{fontSize:10, color:T.textMute}}>👤 {s.caissier}</div>}
-                <button onClick={()=>setCancelModal(s)} style={{marginTop:8, background:T.btnRed.bg, border:"none", borderRadius:8, padding:"6px", width:"100%", color:T.red}}>🗑️ Annuler</button>
+      {view === "annulations" && (() => {
+        const ventesActives = todaySalesAll.filter(s => !s.cancelled);
+        const ventesAnnulees = todaySalesAll.filter(s => s.cancelled);
+        const SaleCard = ({ s, annulable }) => {
+          const heure = s.timestamp ? new Date(s.timestamp).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}) : "--:--";
+          const nbArt = (s.items||[]).reduce((a,i)=>a+(i.qty||1),0);
+          return (
+            <div style={{background:T.surface, borderRadius:16, padding:14, marginBottom:10, borderLeft:`4px solid ${annulable?T.accent:T.red}`, opacity:annulable?1:0.6}}>
+              <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8}}>
+                <div>
+                  <div style={{display:"flex", alignItems:"center", gap:6, flexWrap:"wrap"}}>
+                    <span style={{fontSize:14, fontWeight:700}}>{heure}</span>
+                    <span style={{fontSize:9, background:annulable?"#00ff0022":"#ff000022", color:annulable?T.green:T.red, borderRadius:6, padding:"2px 7px", fontWeight:700}}>
+                      {annulable?"✅ Validée":"🗑️ Annulée"}
+                    </span>
+                  </div>
+                  {s.caissier && <div style={{fontSize:10, color:T.textMute, marginTop:2}}>👤 {s.caissier}</div>}
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:18, fontWeight:800, color:annulable?T.accent:T.textMute}}>{fmtPrice(s.total)}</div>
+                  <div style={{fontSize:9, color:T.textMute}}>{nbArt} art.</div>
+                </div>
               </div>
-            ))}
-        </div>
-      )}
-      
-      {cancelModal && (
-        <div style={{position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000}}>
-          <div style={{background:T.surface, borderRadius:24, padding:20, width:"90%", maxWidth:360}}>
-            <div style={{fontSize:18, fontWeight:800, color:T.red}}>Annuler la vente</div>
-            <textarea placeholder="Motif de l'annulation (obligatoire)" value={cancelRaison} onChange={e=>setCancelRaison(e.target.value)} rows="3" style={{width:"100%", background:T.inputBg, borderRadius:12, padding:12, margin:"12px 0", color:T.text}} />
-            <div style={{display:"flex", gap:8}}>
-              <button onClick={()=>{setCancelModal(null); setCancelRaison("");}} style={{flex:1, background:T.surface2, borderRadius:12, padding:12}}>Retour</button>
-              <button onClick={()=>{ if(cancelRaison.trim()){ cancelSale(cancelModal.id, cancelRaison); setCancelModal(null); setCancelRaison(""); } else flashMsg("Motif requis"); }} style={{flex:1, background:T.red, borderRadius:12, padding:12, color:"white"}}>Confirmer</button>
+              {(s.items||[]).length>0 && (
+                <div style={{background:T.surface2, borderRadius:10, padding:"6px 10px", marginBottom:annulable?10:6}}>
+                  {(s.items||[]).slice(0,3).map((it,i)=>(
+                    <div key={i} style={{display:"flex", justifyContent:"space-between", fontSize:11, padding:"3px 0", borderBottom:i<Math.min((s.items||[]).length,3)-1?`1px solid ${T.border}`:"none"}}>
+                      <span style={{overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:"60%"}}>{it.label}</span>
+                      <span style={{color:T.textMute, flexShrink:0}}>×{it.qty||1} <strong style={{color:T.text}}>{fmtPrice((it.amount||0)*(it.qty||1))}</strong></span>
+                    </div>
+                  ))}
+                  {(s.items||[]).length>3 && <div style={{fontSize:10, color:T.textMute, paddingTop:3}}>+{(s.items||[]).length-3} autre(s)…</div>}
+                </div>
+              )}
+              {!annulable && s.cancelRaison && (
+                <div style={{fontSize:10, color:T.textMute, fontStyle:"italic"}}>Motif : {s.cancelRaison}</div>
+              )}
+              {annulable && (
+                <button onClick={()=>{setCancelModal(s); setCancelRaison("");}}
+                  style={{width:"100%", background:"#ff000015", border:`1px solid ${T.red}44`, borderRadius:10, padding:"9px", color:T.red, fontWeight:700, fontSize:12}}>
+                  🗑️ Annuler cette vente
+                </button>
+              )}
+            </div>
+          );
+        };
+        return (
+          <div style={{overflowY:"auto", maxHeight:"calc(100vh - 180px)", paddingBottom:16}}>
+            {ventesActives.length===0 && ventesAnnulees.length===0 && (
+              <div style={{textAlign:"center", padding:50, color:T.textMute}}>
+                <div style={{fontSize:32, marginBottom:8}}>🧾</div>
+                <div style={{fontSize:13}}>Aucune vente aujourd'hui</div>
+              </div>
+            )}
+            {ventesActives.length>0 && (
+              <>
+                <div style={{fontSize:11, fontWeight:700, color:T.textMute, marginBottom:8, letterSpacing:".5px"}}>ANNULABLES · {ventesActives.length}</div>
+                {[...ventesActives].sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)).map(s=><SaleCard key={s.id} s={s} annulable={true}/>)}
+              </>
+            )}
+            {ventesAnnulees.length>0 && (
+              <>
+                <div style={{fontSize:11, fontWeight:700, color:T.textMute, margin:"14px 0 8px", letterSpacing:".5px"}}>DÉJÀ ANNULÉES · {ventesAnnulees.length}</div>
+                {[...ventesAnnulees].sort((a,b)=>(b.cancelledAt||b.timestamp||0)-(a.cancelledAt||a.timestamp||0)).map(s=><SaleCard key={s.id} s={s} annulable={false}/>)}
+              </>
+            )}
+          </div>
+        );
+      })()}
+
+      {cancelModal && (() => {
+        const MOTIFS = ["Erreur de saisie","Client a changé d'avis","Doublon","Mauvais produit","Autre"];
+        const motifValide = cancelRaison.trim().length>0;
+        const motifRapide = MOTIFS.includes(cancelRaison) && cancelRaison!=="Autre";
+        return (
+          <div style={{position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:1000}}>
+            <div style={{background:T.surface, borderRadius:"24px 24px 0 0", padding:"20px 20px 36px", width:"100%", maxWidth:480}}>
+              <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14}}>
+                <div style={{fontSize:16, fontWeight:800, color:T.red}}>🗑️ Annuler la vente</div>
+                <button onClick={()=>{setCancelModal(null);setCancelRaison("");}} style={{background:T.surface2, border:"none", borderRadius:50, width:32, height:32, fontSize:15, color:T.textMute, display:"flex", alignItems:"center", justifyContent:"center"}}>✕</button>
+              </div>
+              {/* Récap */}
+              <div style={{background:T.surface2, borderRadius:12, padding:"10px 14px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:11, color:T.textMute}}>
+                    {cancelModal.timestamp?new Date(cancelModal.timestamp).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):""}
+                    {cancelModal.caissier?` · 👤 ${cancelModal.caissier}`:""}
+                  </div>
+                  <div style={{fontSize:11, color:T.textMute}}>{(cancelModal.items||[]).reduce((a,i)=>a+(i.qty||1),0)} article(s)</div>
+                </div>
+                <div style={{fontSize:20, fontWeight:800, color:T.accent}}>{fmtPrice(cancelModal.total)}</div>
+              </div>
+              {/* Motifs rapides */}
+              <div style={{fontSize:11, fontWeight:700, color:T.textMute, marginBottom:8}}>Motif</div>
+              <div style={{display:"flex", flexWrap:"wrap", gap:7, marginBottom:12}}>
+                {MOTIFS.map(m=>(
+                  <button key={m} onClick={()=>setCancelRaison(m)}
+                    style={{background:cancelRaison===m?T.red:"#ff000015", border:`1px solid ${cancelRaison===m?T.red:T.border}`, borderRadius:20, padding:"7px 13px", fontSize:12, fontWeight:600, color:cancelRaison===m?"#fff":T.text}}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+              {/* Champ libre (si Autre ou texte libre) */}
+              {(!motifRapide) && (
+                <textarea placeholder="Précisez le motif..." value={cancelRaison==="Autre"?"":cancelRaison} onChange={e=>setCancelRaison(e.target.value)}
+                  rows="2" style={{width:"100%", background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:12, padding:"10px 12px", color:T.text, fontSize:12, resize:"none", marginBottom:14}} />
+              )}
+              {motifRapide && <div style={{marginBottom:14}}/>}
+              {/* Boutons */}
+              <div style={{display:"flex", gap:10}}>
+                <button onClick={()=>{setCancelModal(null);setCancelRaison("");}}
+                  style={{flex:1, background:T.surface2, border:"none", borderRadius:14, padding:"13px", fontWeight:600, fontSize:13, color:T.text}}>
+                  Retour
+                </button>
+                <button onClick={()=>{ if(!motifValide){flashMsg("Choisissez un motif");return;} cancelSale(cancelModal.id,cancelRaison); setCancelModal(null); setCancelRaison(""); }}
+                  style={{flex:2, background:motifValide?T.red:T.surface2, border:"none", borderRadius:14, padding:"13px", fontWeight:800, fontSize:13, color:motifValide?"#fff":T.textMute}}>
+                  ✅ Confirmer l'annulation
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </>
   );
 }
@@ -2593,5 +2692,3 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
-
-
