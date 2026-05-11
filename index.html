@@ -1459,6 +1459,194 @@ function PanierContent({ T, items, setItems, total, addSale, addCredit, flashMsg
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  VALORISATION STOCK
+// ══════════════════════════════════════════════════════════════════
+function SectionValorisation({ T, products }) {
+  const prodsAvecStock = products.filter(p=>p.active!==false && p.stock!==undefined && p.stock!==null && p.stock!==-1 && p.stock>0);
+  const valeurAchat = prodsAvecStock.reduce((a,p)=>a+((p.prixAchat||0)*p.stock),0);
+  const valeurVente = prodsAvecStock.reduce((a,p)=>a+((p.price||0)*p.stock),0);
+  const margeStock = valeurVente - valeurAchat;
+  const sorted = [...prodsAvecStock].sort((a,b)=>((b.prixAchat||0)*b.stock)-((a.prixAchat||0)*a.stock));
+
+  return (
+    <div>
+      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:14}}>
+        <div style={{background:T.surface, borderRadius:14, padding:12, border:`1px solid ${T.blue}44`}}>
+          <div style={{fontSize:10, color:T.textMute}}>Coût d'achat total</div>
+          <div style={{fontSize:20, fontWeight:800, color:T.blue}}>{fmtPrice(valeurAchat)}</div>
+          <div style={{fontSize:9, color:T.textMute, marginTop:2}}>Capital immobilisé</div>
+        </div>
+        <div style={{background:T.surface, borderRadius:14, padding:12, border:`1px solid ${T.green}44`}}>
+          <div style={{fontSize:10, color:T.textMute}}>Valeur de vente</div>
+          <div style={{fontSize:20, fontWeight:800, color:T.green}}>{fmtPrice(valeurVente)}</div>
+          <div style={{fontSize:9, color:T.textMute, marginTop:2}}>Si tout vendu</div>
+        </div>
+        <div style={{background:T.surface, borderRadius:14, padding:12, border:`1px solid ${T.accent}44`, gridColumn:"span 2"}}>
+          <div style={{fontSize:10, color:T.textMute}}>Marge potentielle du stock</div>
+          <div style={{fontSize:24, fontWeight:800, color:margeStock>=0?T.accent:T.red}}>{fmtPrice(margeStock)}</div>
+          <div style={{fontSize:9, color:T.textMute, marginTop:2}}>{prodsAvecStock.length} produit(s) en stock · {products.filter(p=>p.stock===-1).length} à stock illimité (exclus)</div>
+        </div>
+      </div>
+      <div style={{background:T.surface, borderRadius:16, padding:14}}>
+        <div style={{fontSize:12, fontWeight:700, marginBottom:10, color:T.text}}>📋 Détail par produit</div>
+        <div style={{display:"grid", gridTemplateColumns:"1fr 40px 60px 70px", gap:4, marginBottom:6, padding:"0 6px"}}>
+          {["Produit","Qté","P.Achat","Valeur"].map(h=>(
+            <div key={h} style={{fontSize:9, fontWeight:700, color:T.textMute, textAlign:h==="Produit"?"left":"right"}}>{h}</div>
+          ))}
+        </div>
+        {sorted.map(p=>{
+          const va=(p.prixAchat||0)*p.stock; const vv=(p.price||0)*p.stock;
+          return (
+            <div key={p.id} style={{display:"grid", gridTemplateColumns:"1fr 40px 60px 70px", gap:4, padding:"8px 6px", borderBottom:`1px solid ${T.border}`, alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:12, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p.name}</div>
+                {p.category && <div style={{fontSize:9, color:T.textMute}}>{p.category}</div>}
+              </div>
+              <div style={{textAlign:"right", fontSize:12, fontWeight:600}}>{p.stock}</div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:11, color:T.textMute}}>{fmtPrice(p.prixAchat||0)}</div>
+                <div style={{fontSize:9, color:T.textMute}}>{fmtPrice(p.price)}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:12, fontWeight:700, color:va>0?T.blue:T.textMute}}>{fmtPrice(va)}</div>
+                <div style={{fontSize:9, color:T.green}}>{fmtPrice(vv)}</div>
+              </div>
+            </div>
+          );
+        })}
+        {sorted.length===0 && (
+          <div style={{textAlign:"center", padding:30, color:T.textMute, fontSize:12}}>
+            <div style={{fontSize:28, marginBottom:8}}>📭</div>
+            Aucun produit avec stock et prix d'achat renseignés
+          </div>
+        )}
+        {sorted.length>0 && (
+          <div style={{display:"grid", gridTemplateColumns:"1fr 40px 60px 70px", gap:4, padding:"10px 6px 0", marginTop:4, borderTop:`2px solid ${T.accent}44`}}>
+            <div style={{fontSize:11, fontWeight:800}}>TOTAL</div>
+            <div style={{textAlign:"right", fontSize:11, fontWeight:700}}>{prodsAvecStock.reduce((a,p)=>a+p.stock,0)}</div>
+            <div></div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:12, fontWeight:800, color:T.blue}}>{fmtPrice(valeurAchat)}</div>
+              <div style={{fontSize:10, fontWeight:700, color:T.green}}>{fmtPrice(valeurVente)}</div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  DÉPENSES JOURNALIÈRES
+// ══════════════════════════════════════════════════════════════════
+function SectionDepenses({ T, shopId, flashMsg, depenses, depLoading }) {
+  const CATS = ["Loyer","Salaires","Électricité","Transport","Achat stock","Maintenance","Autre"];
+  const today = new Date().toISOString().slice(0,10);
+  const [depLib, setDepLib] = useState("");
+  const [depMontant, setDepMontant] = useState("");
+  const [depCat, setDepCat] = useState("Autre");
+  const [depSaving, setDepSaving] = useState(false);
+  const [filterDate, setFilterDate] = useState(today);
+
+  const ajouterDepense = async () => {
+    const m = parseInt(depMontant); if(!m||m<=0){flashMsg("Montant invalide");return;}
+    if(!depLib.trim()){flashMsg("Libellé requis");return;}
+    setDepSaving(true);
+    try {
+      await db.collection("shops").doc(shopId).collection("depenses").add({
+        libelle: depLib.trim(), montant: m, categorie: depCat,
+        date: today, timestamp: Date.now()
+      });
+      setDepLib(""); setDepMontant(""); setDepCat("Autre");
+      flashMsg("💸 Dépense enregistrée");
+    } catch(e){ flashMsg("Erreur: "+e.message); }
+    setDepSaving(false);
+  };
+
+  const supprimerDepense = async (id) => {
+    if(!confirm("Supprimer cette dépense ?")) return;
+    try {
+      await db.collection("shops").doc(shopId).collection("depenses").doc(id).delete();
+      flashMsg("🗑️ Supprimée");
+    } catch(e){ flashMsg("Erreur: "+e.message); }
+  };
+
+  const filtered = depenses.filter(d=>d.date===filterDate);
+  const totalFiltered = filtered.reduce((a,b)=>a+(b.montant||0),0);
+  const bycat = CATS.map(c=>({cat:c, total:filtered.filter(d=>d.categorie===c).reduce((a,b)=>a+(b.montant||0),0)})).filter(x=>x.total>0);
+
+  return (
+    <div>
+      <div style={{background:T.surface, borderRadius:16, padding:14, marginBottom:12}}>
+        <div style={{fontSize:12, fontWeight:700, marginBottom:10, color:T.text}}>➕ Nouvelle dépense</div>
+        <select value={depCat} onChange={e=>setDepCat(e.target.value)}
+          style={{width:"100%", background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:10, padding:"9px 10px", marginBottom:8, color:T.text, fontSize:12}}>
+          {CATS.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+        <input placeholder="Libellé (ex: facture eau, salaire vigile...)" value={depLib} onChange={e=>setDepLib(e.target.value)}
+          style={{width:"100%", background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:10, padding:"9px 10px", marginBottom:8, color:T.text, fontSize:12}} />
+        <div style={{display:"flex", gap:8}}>
+          <input type="number" min="0" placeholder="Montant (F CFA)" value={depMontant} onChange={e=>setDepMontant(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&ajouterDepense()}
+            style={{flex:1, background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:10, padding:"9px 10px", color:T.text, fontSize:13, fontWeight:600}} />
+          <button onClick={ajouterDepense} disabled={depSaving}
+            style={{background:T.red, border:"none", borderRadius:10, padding:"9px 16px", fontWeight:700, color:"#fff", fontSize:13, opacity:depSaving?0.6:1}}>
+            {depSaving?"...":"💾 Ajouter"}
+          </button>
+        </div>
+      </div>
+
+      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
+        <div style={{fontSize:12, fontWeight:700, color:T.text}}>Historique</div>
+        <input type="date" value={filterDate} onChange={e=>setFilterDate(e.target.value)}
+          style={{background:T.surface, border:`1px solid ${T.border}`, borderRadius:8, padding:"5px 8px", color:T.text, fontSize:11}} />
+      </div>
+
+      {filtered.length>0 && (
+        <div style={{background:T.surface, borderRadius:14, padding:12, marginBottom:10}}>
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:bycat.length>0?8:0}}>
+            <span style={{fontSize:11, color:T.textMute}}>{filtered.length} dépense(s)</span>
+            <span style={{fontSize:20, fontWeight:800, color:T.red}}>{fmtPrice(totalFiltered)}</span>
+          </div>
+          {bycat.length>1 && (
+            <div style={{display:"flex", flexWrap:"wrap", gap:4}}>
+              {bycat.map(x=>(
+                <span key={x.cat} style={{background:T.surface2, borderRadius:6, padding:"2px 8px", fontSize:9, color:T.textMute}}>
+                  {x.cat}: <strong style={{color:T.text}}>{fmtPrice(x.total)}</strong>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {depLoading && <div style={{textAlign:"center", padding:20, color:T.textMute, fontSize:11}}>⏳ Chargement...</div>}
+      {!depLoading && filtered.length===0 && (
+        <div style={{textAlign:"center", padding:40, color:T.textMute, fontSize:12}}>
+          <div style={{fontSize:28, marginBottom:8}}>📭</div>
+          Aucune dépense ce jour
+        </div>
+      )}
+      {filtered.map(dep=>(
+        <div key={dep.id} style={{background:T.surface, borderRadius:14, padding:"10px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10, borderLeft:`3px solid ${T.red}`}}>
+          <div style={{flex:1, minWidth:0}}>
+            <div style={{fontSize:12, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{dep.libelle}</div>
+            <div style={{fontSize:10, color:T.textMute}}>
+              <span style={{background:T.surface2, borderRadius:5, padding:"1px 6px", marginRight:4}}>{dep.categorie||"Autre"}</span>
+              {dep.timestamp && new Date(dep.timestamp).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}
+            </div>
+          </div>
+          <div style={{textAlign:"right", flexShrink:0}}>
+            <div style={{fontSize:15, fontWeight:800, color:T.red}}>{fmtPrice(dep.montant)}</div>
+            <button onClick={()=>supprimerDepense(dep.id)} style={{background:"none", border:"none", color:T.textMute, fontSize:11, cursor:"pointer", padding:0, marginTop:2}}>🗑️</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  COMMANDES FOURNISSEUR
 // ══════════════════════════════════════════════════════════════════
 function CommandesFournisseur({ T, products, flashMsg, shopId, updateStock }) {
@@ -2003,193 +2191,14 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
       )}
 
       {/* ── VALORISATION STOCK ── */}
-      {tab==="valorisation" && (()=>{
-        const cats = Array.from(new Set(prodsAvecStock.map(p=>p.category||"Sans catégorie")));
-        const sorted = [...prodsAvecStock].sort((a,b)=>((b.prixAchat||0)*b.stock)-((a.prixAchat||0)*a.stock));
-        return (
-          <div>
-            {/* Cartes synthèse */}
-            <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:14}}>
-              <div style={{background:T.surface, borderRadius:14, padding:12, border:`1px solid ${T.blue}44`}}>
-                <div style={{fontSize:10, color:T.textMute}}>Coût d'achat total</div>
-                <div style={{fontSize:20, fontWeight:800, color:T.blue}}>{fmtPrice(valeurAchat)}</div>
-                <div style={{fontSize:9, color:T.textMute, marginTop:2}}>Capital immobilisé</div>
-              </div>
-              <div style={{background:T.surface, borderRadius:14, padding:12, border:`1px solid ${T.green}44`}}>
-                <div style={{fontSize:10, color:T.textMute}}>Valeur de vente</div>
-                <div style={{fontSize:20, fontWeight:800, color:T.green}}>{fmtPrice(valeurVente)}</div>
-                <div style={{fontSize:9, color:T.textMute, marginTop:2}}>Si tout vendu</div>
-              </div>
-              <div style={{background:T.surface, borderRadius:14, padding:12, border:`1px solid ${T.accent}44`, gridColumn:"span 2"}}>
-                <div style={{fontSize:10, color:T.textMute}}>Marge potentielle du stock</div>
-                <div style={{fontSize:24, fontWeight:800, color:margeStock>=0?T.accent:T.red}}>{fmtPrice(margeStock)}</div>
-                <div style={{fontSize:9, color:T.textMute, marginTop:2}}>{prodsAvecStock.length} produit(s) en stock · {products.filter(p=>p.stock===-1).length} à stock illimité (exclus)</div>
-              </div>
-            </div>
-
-            {/* Tableau produits */}
-            <div style={{background:T.surface, borderRadius:16, padding:14}}>
-              <div style={{fontSize:12, fontWeight:700, marginBottom:10, color:T.text}}>📋 Détail par produit</div>
-              {/* Header */}
-              <div style={{display:"grid", gridTemplateColumns:"1fr 40px 60px 70px", gap:4, marginBottom:6, padding:"0 6px"}}>
-                {["Produit","Qté","P.Achat","Valeur"].map(h=>(
-                  <div key={h} style={{fontSize:9, fontWeight:700, color:T.textMute, textAlign:h==="Produit"?"left":"right"}}>{h}</div>
-                ))}
-              </div>
-              {sorted.map(p=>{
-                const va = (p.prixAchat||0)*p.stock;
-                const vv = (p.price||0)*p.stock;
-                return (
-                  <div key={p.id} style={{display:"grid", gridTemplateColumns:"1fr 40px 60px 70px", gap:4, padding:"8px 6px", borderBottom:`1px solid ${T.border}`, alignItems:"center"}}>
-                    <div>
-                      <div style={{fontSize:12, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p.name}</div>
-                      {p.category && <div style={{fontSize:9, color:T.textMute}}>{p.category}</div>}
-                    </div>
-                    <div style={{textAlign:"right", fontSize:12, fontWeight:600}}>{p.stock}</div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:11, color:T.textMute}}>{fmtPrice(p.prixAchat||0)}</div>
-                      <div style={{fontSize:9, color:T.textMute}}>{fmtPrice(p.price)}</div>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:12, fontWeight:700, color:va>0?T.blue:T.textMute}}>{fmtPrice(va)}</div>
-                      <div style={{fontSize:9, color:T.green}}>{fmtPrice(vv)}</div>
-                    </div>
-                  </div>
-                );
-              })}
-              {sorted.length===0 && (
-                <div style={{textAlign:"center", padding:30, color:T.textMute, fontSize:12}}>
-                  <div style={{fontSize:28, marginBottom:8}}>📭</div>
-                  Aucun produit avec stock et prix d'achat renseignés
-                </div>
-              )}
-              {/* Totaux ligne */}
-              {sorted.length>0 && (
-                <div style={{display:"grid", gridTemplateColumns:"1fr 40px 60px 70px", gap:4, padding:"10px 6px 0", marginTop:4, borderTop:`2px solid ${T.accent}44`}}>
-                  <div style={{fontSize:11, fontWeight:800}}>TOTAL</div>
-                  <div style={{textAlign:"right", fontSize:11, fontWeight:700}}>{prodsAvecStock.reduce((a,p)=>a+p.stock,0)}</div>
-                  <div></div>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontSize:12, fontWeight:800, color:T.blue}}>{fmtPrice(valeurAchat)}</div>
-                    <div style={{fontSize:10, fontWeight:700, color:T.green}}>{fmtPrice(valeurVente)}</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })()}
+      {tab==="valorisation" && (
+        <SectionValorisation T={T} products={products} />
+      )}
 
       {/* ── DÉPENSES JOURNALIÈRES ── */}
-      {tab==="depenses" && (()=>{
-        const CATS = ["Loyer","Salaires","Électricité","Transport","Achat stock","Maintenance","Autre"];
-        const [depLib, setDepLib] = React.useState("");
-        const [depMontant, setDepMontant] = React.useState("");
-        const [depCat, setDepCat] = React.useState("Autre");
-        const [depSaving, setDepSaving] = React.useState(false);
-        const [filterDate, setFilterDate] = React.useState(today);
-
-        const ajouterDepense = async () => {
-          const m = parseInt(depMontant); if(!m||m<=0){flashMsg("Montant invalide");return;}
-          if(!depLib.trim()){flashMsg("Libellé requis");return;}
-          setDepSaving(true);
-          try {
-            await db.collection("shops").doc(shopId).collection("depenses").add({
-              libelle: depLib.trim(), montant: m, categorie: depCat,
-              date: today, timestamp: Date.now()
-            });
-            setDepLib(""); setDepMontant(""); setDepCat("Autre");
-            flashMsg("💸 Dépense enregistrée");
-          } catch(e){ flashMsg("Erreur: "+e.message); }
-          setDepSaving(false);
-        };
-
-        const supprimerDepense = async (id) => {
-          if(!confirm("Supprimer cette dépense ?")) return;
-          try {
-            await db.collection("shops").doc(shopId).collection("depenses").doc(id).delete();
-            flashMsg("🗑️ Supprimée");
-          } catch(e){ flashMsg("Erreur: "+e.message); }
-        };
-
-        const filtered = depenses.filter(d=>d.date===filterDate);
-        const totalFiltered = filtered.reduce((a,b)=>a+(b.montant||0),0);
-        const bycat = CATS.map(c=>({cat:c, total:filtered.filter(d=>d.categorie===c).reduce((a,b)=>a+(b.montant||0),0)})).filter(x=>x.total>0);
-
-        return (
-          <div>
-            {/* Formulaire saisie rapide */}
-            <div style={{background:T.surface, borderRadius:16, padding:14, marginBottom:12}}>
-              <div style={{fontSize:12, fontWeight:700, marginBottom:10, color:T.text}}>➕ Nouvelle dépense</div>
-              <select value={depCat} onChange={e=>setDepCat(e.target.value)}
-                style={{width:"100%", background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:10, padding:"9px 10px", marginBottom:8, color:T.text, fontSize:12}}>
-                {CATS.map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
-              <input placeholder="Libellé (ex: facture eau, salaire vigile...)" value={depLib} onChange={e=>setDepLib(e.target.value)}
-                style={{width:"100%", background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:10, padding:"9px 10px", marginBottom:8, color:T.text, fontSize:12}} />
-              <div style={{display:"flex", gap:8}}>
-                <input type="number" min="0" placeholder="Montant (F CFA)" value={depMontant} onChange={e=>setDepMontant(e.target.value)}
-                  onKeyDown={e=>e.key==="Enter"&&ajouterDepense()}
-                  style={{flex:1, background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:10, padding:"9px 10px", color:T.text, fontSize:13, fontWeight:600}} />
-                <button onClick={ajouterDepense} disabled={depSaving}
-                  style={{background:T.red, border:"none", borderRadius:10, padding:"9px 16px", fontWeight:700, color:"#fff", fontSize:13, opacity:depSaving?0.6:1}}>
-                  {depSaving?"...":"💾 Ajouter"}
-                </button>
-              </div>
-            </div>
-
-            {/* Filtre date */}
-            <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
-              <div style={{fontSize:12, fontWeight:700, color:T.text}}>Historique</div>
-              <input type="date" value={filterDate} onChange={e=>setFilterDate(e.target.value)}
-                style={{background:T.surface, border:`1px solid ${T.border}`, borderRadius:8, padding:"5px 8px", color:T.text, fontSize:11}} />
-            </div>
-
-            {/* Résumé du jour filtré */}
-            {filtered.length>0 && (
-              <div style={{background:T.surface, borderRadius:14, padding:12, marginBottom:10}}>
-                <div style={{display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:bycat.length>0?8:0}}>
-                  <span style={{fontSize:11, color:T.textMute}}>{filtered.length} dépense(s) ce jour</span>
-                  <span style={{fontSize:20, fontWeight:800, color:T.red}}>{fmtPrice(totalFiltered)}</span>
-                </div>
-                {bycat.length>1 && (
-                  <div style={{display:"flex", flexWrap:"wrap", gap:4}}>
-                    {bycat.map(x=>(
-                      <span key={x.cat} style={{background:T.surface2, borderRadius:6, padding:"2px 8px", fontSize:9, color:T.textMute}}>
-                        {x.cat}: <strong style={{color:T.text}}>{fmtPrice(x.total)}</strong>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Liste dépenses */}
-            {depLoading && <div style={{textAlign:"center", padding:20, color:T.textMute, fontSize:11}}>⏳ Chargement...</div>}
-            {!depLoading && filtered.length===0 && (
-              <div style={{textAlign:"center", padding:40, color:T.textMute, fontSize:12}}>
-                <div style={{fontSize:28, marginBottom:8}}>📭</div>
-                Aucune dépense ce jour
-              </div>
-            )}
-            {filtered.map(dep=>(
-              <div key={dep.id} style={{background:T.surface, borderRadius:14, padding:"10px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:10, borderLeft:`3px solid ${T.red}`}}>
-                <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontSize:12, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{dep.libelle}</div>
-                  <div style={{fontSize:10, color:T.textMute}}>
-                    <span style={{background:T.surface2, borderRadius:5, padding:"1px 6px", marginRight:4}}>{dep.categorie||"Autre"}</span>
-                    {dep.timestamp && new Date(dep.timestamp).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}
-                  </div>
-                </div>
-                <div style={{textAlign:"right", flexShrink:0}}>
-                  <div style={{fontSize:15, fontWeight:800, color:T.red}}>{fmtPrice(dep.montant)}</div>
-                  <button onClick={()=>supprimerDepense(dep.id)} style={{background:"none", border:"none", color:T.textMute, fontSize:11, cursor:"pointer", padding:0, marginTop:2}}>🗑️</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        );
-      })()}
+      {tab==="depenses" && (
+        <SectionDepenses T={T} shopId={shopId} flashMsg={flashMsg} depenses={depenses} depLoading={depLoading} />
+      )}
 
       {/* ── DETTES ── */}
       {tab==="dettes" && (
@@ -2584,4 +2593,5 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
+
 
