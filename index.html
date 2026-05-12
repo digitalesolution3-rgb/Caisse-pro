@@ -1329,8 +1329,8 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
   React.useEffect(() => () => stopScanner(), []);
   
   return (
-    <>
-      <div style={{display:"flex", gap:6, marginBottom:12, overflowX:"auto", paddingBottom:2}}>
+    <div style={{display:"flex", flexDirection:"column", height:"100%", overflow:"hidden"}}>
+      <div style={{display:"flex", gap:6, marginBottom:12, overflowX:"auto", paddingBottom:2, flexShrink:0}}>
         <button onClick={()=>setView("catalog")} style={{flex:"1 0 auto", background:view==="catalog"?T.accent:T.surface, borderRadius:12, padding:"8px 10px", fontWeight:600, fontSize:12, color:view==="catalog"?T.bg:T.text}}>📦 Catalogue</button>
         <button onClick={()=>setView("manual")} style={{flex:"1 0 auto", background:view==="manual"?T.accent:T.surface, borderRadius:12, padding:"8px 10px", fontWeight:600, fontSize:12, color:view==="manual"?T.bg:T.text}}>✏️ Manuel</button>
         <button onClick={()=>setView("rapide")} style={{flex:"1 0 auto", background:view==="rapide"?T.accent:T.surface, borderRadius:12, padding:"8px 10px", fontWeight:600, fontSize:12, color:view==="rapide"?T.bg:T.text}}>⚡ Rapide</button>
@@ -1427,7 +1427,7 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
           );
         };
         return (
-          <div style={{overflowY:"auto", maxHeight:"calc(100vh - 180px)", paddingBottom:16}}>
+          <div style={{overflowY:"auto", overflowX:"hidden", flex:1, WebkitOverflowScrolling:"touch", paddingBottom:24}}>
             {ventesActives.length===0 && ventesAnnulees.length===0 && (
               <div style={{textAlign:"center", padding:50, color:T.textMute}}>
                 <div style={{fontSize:32, marginBottom:8}}>🧾</div>
@@ -1503,7 +1503,7 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
           </div>
         );
       })()}
-    </>
+    </div>
   );
 }
 
@@ -2182,6 +2182,189 @@ function SectionAnalytics({ T, sales, depenses, hasBeneficeData, today, top5, st
   );
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  SECTION VENTES — Jour / Semaine / Mois
+// ══════════════════════════════════════════════════════════════════
+function SectionVentes({ T, sales, hasBeneficeData }) {
+  const [periode, setPeriode] = useState("jour");
+  const [expandedDate, setExpandedDate] = useState(null);
+
+  const JOURS_FR = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
+  const MOIS_FR  = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+
+  const today = new Date().toISOString().slice(0,10);
+  const nowTs = Date.now();
+
+  // ── Calcul plage ────────────────────────────────────────────────
+  const getRange = () => {
+    const d = new Date();
+    if (periode === "jour") {
+      return [today, today];
+    } else if (periode === "semaine") {
+      const start = new Date(d); start.setDate(d.getDate() - 6);
+      return [start.toISOString().slice(0,10), today];
+    } else {
+      const start = new Date(d); start.setDate(d.getDate() - 29);
+      return [start.toISOString().slice(0,10), today];
+    }
+  };
+  const [dateMin, dateMax] = getRange();
+
+  const salesInRange = (sales||[]).filter(s => s.date >= dateMin && s.date <= dateMax);
+  const ventesOK     = salesInRange.filter(s => !s.cancelled);
+  const ventesAnnul  = salesInRange.filter(s => s.cancelled);
+
+  // ── Totaux période ───────────────────────────────────────────────
+  const totalCA    = ventesOK.reduce((a,s)=>a+(s.total||0),0);
+  const totalMarge = ventesOK.reduce((a,s)=>a+(s.items||[]).reduce((b,it)=>b+((it.amount||0)-(it.prixAchat||0))*(it.qty||1),0),0);
+
+  // ── Groupement par date ──────────────────────────────────────────
+  const grouped = {};
+  salesInRange.forEach(s => {
+    if (!grouped[s.date]) grouped[s.date] = [];
+    grouped[s.date].push(s);
+  });
+  const dates = Object.keys(grouped).sort((a,b)=>b.localeCompare(a));
+
+  const labelDate = (dateStr) => {
+    const d = new Date(dateStr + "T12:00:00");
+    const j = JOURS_FR[d.getDay()];
+    const m = MOIS_FR[d.getMonth()];
+    if (dateStr === today) return "Aujourd'hui";
+    const hier = new Date(); hier.setDate(hier.getDate()-1);
+    if (dateStr === hier.toISOString().slice(0,10)) return "Hier";
+    return `${j} ${d.getDate()} ${m}`;
+  };
+
+  // ── Carte vente individuelle ─────────────────────────────────────
+  const SaleRow = ({ s }) => {
+    const heure = s.timestamp ? new Date(s.timestamp).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}) : "--:--";
+    return (
+      <div style={{padding:"9px 10px", borderBottom:`1px solid ${T.border}`,
+        background:s.cancelled?T.red+"11":"transparent",
+        borderLeft:s.cancelled?`3px solid ${T.red}`:`3px solid ${T.green}`}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start"}}>
+          <div style={{flex:1, minWidth:0}}>
+            <div style={{display:"flex", alignItems:"center", gap:6, flexWrap:"wrap"}}>
+              <span style={{fontSize:12, fontWeight:700, color:s.cancelled?T.red:T.text}}>{heure}</span>
+              {s.caissier && <span style={{fontSize:10, color:T.textMute}}>👤 {s.caissier}</span>}
+              {s.cancelled && <span style={{fontSize:9, background:T.red+"22", color:T.red, borderRadius:5, padding:"1px 6px", fontWeight:700}}>ANNULÉE</span>}
+            </div>
+            {(s.items||[]).slice(0,2).map((it,i)=>(
+              <div key={i} style={{fontSize:10, color:T.textMute, marginTop:1}}>
+                · {it.label} ×{it.qty||1}
+              </div>
+            ))}
+            {(s.items||[]).length > 2 && <div style={{fontSize:10, color:T.textMute}}>+{(s.items||[]).length-2} autre(s)</div>}
+            {s.cancelled && s.cancelRaison && <div style={{fontSize:10, color:T.red, fontStyle:"italic", marginTop:2}}>Motif : {s.cancelRaison}</div>}
+          </div>
+          <div style={{flexShrink:0, textAlign:"right", marginLeft:8}}>
+            <div style={{fontSize:14, fontWeight:800, color:s.cancelled?T.red:T.accent}}>{fmtPrice(s.total)}</div>
+            <div style={{fontSize:9, color:T.textMute}}>{(s.items||[]).reduce((a,i)=>a+(i.qty||1),0)} art.</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{display:"flex", flexDirection:"column", height:"100%"}}>
+      {/* Toggle période */}
+      <div style={{display:"flex", gap:6, marginBottom:12, background:T.surface2, borderRadius:12, padding:3, flexShrink:0}}>
+        {[["jour","Aujourd'hui"],["semaine","7 jours"],["mois","30 jours"]].map(([k,l])=>(
+          <button key={k} onClick={()=>{setPeriode(k); setExpandedDate(null);}}
+            style={{flex:1, background:periode===k?T.accent:"transparent", border:"none", borderRadius:8, padding:"7px 4px", fontWeight:700, fontSize:11, color:periode===k?T.bg:T.textMute}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* Carte résumé période */}
+      <div style={{background:T.surface, borderRadius:14, padding:"10px 14px", marginBottom:12, flexShrink:0}}>
+        <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr"+(hasBeneficeData?" 1fr":""), gap:8}}>
+          <div>
+            <div style={{fontSize:9, color:T.textMute}}>CA</div>
+            <div style={{fontSize:16, fontWeight:800, color:T.accent}}>{fmtPrice(totalCA)}</div>
+          </div>
+          <div>
+            <div style={{fontSize:9, color:T.textMute}}>Ventes</div>
+            <div style={{fontSize:16, fontWeight:800, color:T.green}}>{ventesOK.length}</div>
+          </div>
+          <div>
+            <div style={{fontSize:9, color:T.textMute}}>Annul.</div>
+            <div style={{fontSize:16, fontWeight:800, color:ventesAnnul.length>0?T.red:T.textMute}}>{ventesAnnul.length}</div>
+          </div>
+          {hasBeneficeData && (
+            <div>
+              <div style={{fontSize:9, color:T.textMute}}>Marge</div>
+              <div style={{fontSize:16, fontWeight:800, color:totalMarge>=0?T.green:T.red}}>{fmtPrice(totalMarge)}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Liste groupée par date */}
+      <div style={{overflowY:"auto", flex:1, WebkitOverflowScrolling:"touch", paddingBottom:24}}>
+        {dates.length === 0 && (
+          <div style={{textAlign:"center", padding:50, color:T.textMute}}>
+            <div style={{fontSize:32, marginBottom:8}}>🧾</div>
+            <div style={{fontSize:13}}>Aucune vente sur cette période</div>
+          </div>
+        )}
+
+        {/* Vue "jour" — pas de groupement, flat list */}
+        {periode === "jour" && dates.length > 0 && (
+          <div style={{background:T.surface, borderRadius:14, overflow:"hidden"}}>
+            {[...(grouped[today]||[])].sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)).map(s=>(
+              <SaleRow key={s.id} s={s} />
+            ))}
+          </div>
+        )}
+
+        {/* Vue semaine / mois — groupé par date */}
+        {periode !== "jour" && dates.map(date => {
+          const ventesDate = [...(grouped[date]||[])].sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+          const caDate     = ventesDate.filter(s=>!s.cancelled).reduce((a,s)=>a+(s.total||0),0);
+          const nbOK       = ventesDate.filter(s=>!s.cancelled).length;
+          const nbAnnul    = ventesDate.filter(s=>s.cancelled).length;
+          const isOpen     = expandedDate === date || periode === "semaine";
+          const isToday    = date === today;
+
+          return (
+            <div key={date} style={{marginBottom:8}}>
+              {/* En-tête groupe */}
+              <div onClick={()=>setExpandedDate(isOpen&&periode!=="semaine"?null:date)}
+                style={{background:isToday?T.accent+"22":T.surface, borderRadius:isOpen?"12px 12px 0 0":12,
+                  padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center",
+                  cursor:periode==="mois"?"pointer":"default",
+                  borderLeft:`4px solid ${isToday?T.accent:T.surface2}`}}>
+                <div>
+                  <div style={{fontSize:12, fontWeight:800, color:isToday?T.accent:T.text}}>{labelDate(date)}</div>
+                  <div style={{fontSize:10, color:T.textMute}}>
+                    {nbOK} vente{nbOK!==1?"s":""}
+                    {nbAnnul>0?` · ${nbAnnul} annul.`:""}
+                  </div>
+                </div>
+                <div style={{display:"flex", alignItems:"center", gap:8}}>
+                  <div style={{fontSize:16, fontWeight:800, color:caDate>0?T.accent:T.textMute}}>{fmtPrice(caDate)}</div>
+                  {periode==="mois" && <span style={{color:T.textMute, fontSize:14}}>{isOpen?"▲":"▼"}</span>}
+                </div>
+              </div>
+
+              {/* Ventes du groupe */}
+              {isOpen && (
+                <div style={{background:T.surface, borderRadius:"0 0 12px 12px", overflow:"hidden", borderTop:`1px solid ${T.border}`}}>
+                  {ventesDate.map(s=><SaleRow key={s.id} s={s}/>)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, flashMsg, shopId, stockMovements, updateStock, updateAdminPin, credits, payCredit, caissiers, saveCaissier, deleteCaissier, loginCaissier, currentCaissier }) {
   const [tab, setTab] = useState("stats");
   const [showForm, setShowForm] = useState(false);
@@ -2571,14 +2754,7 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
 
       {/* ── VENTES ── */}
       {tab==="sales" && (
-        (sales||[]).sort((a,b)=>b.timestamp-a.timestamp).map(s=>(
-          <div key={s.id} style={{background:s.cancelled?T.btnRed.bg:T.surface, borderRadius:12, padding:12, marginBottom:8, borderLeft:`4px solid ${s.cancelled?T.red:T.green}`}}>
-            <div style={{display:"flex", justifyContent:"space-between"}}><span>{new Date(s.timestamp).toLocaleTimeString()}</span><span style={{fontWeight:700}}>{fmtPrice(s.total)}</span></div>
-            {s.caissier && <div style={{fontSize:10, color:T.textMute}}>👤 {s.caissier}</div>}
-            {(s.items||[]).slice(0,2).map((it,i)=><div key={i} style={{fontSize:11}}>• {it.label} x{it.qty}</div>)}
-            {s.cancelled && <div style={{fontSize:10, color:T.red, marginTop:4}}>❌ ANNULÉ : {s.cancelRaison}</div>}
-          </div>
-        ))
+        <SectionVentes T={T} sales={sales} hasBeneficeData={hasBeneficeData} />
       )}
 
       {/* ── PARAMÈTRES ── */}
