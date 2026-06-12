@@ -252,6 +252,26 @@ class OfflineStore {
   static set(shopId, type, data) { try { localStorage.setItem(getStoreKey(shopId, type), JSON.stringify(data || [])); } catch(e){} }
 }
 
+// ── Cache de session pour connexion hors-ligne ─────────────────────────────
+const SESSION_CACHE_KEY = "pos_session_cache_v1";
+class SessionCache {
+  static getAll() { try { return JSON.parse(localStorage.getItem(SESSION_CACHE_KEY) || "{}"); } catch(e){ return {}; } }
+  static get(shopKey) { try { const all = this.getAll(); return all[shopKey] || null; } catch(e){ return null; } }
+  static save(shopKey, session, password) {
+    try {
+      const all = this.getAll();
+      all[shopKey] = { session, passwordHash: btoa(password), savedAt: Date.now() };
+      localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(all));
+    } catch(e){}
+  }
+  static updateSession(shopKey, session) {
+    try {
+      const all = this.getAll();
+      if (all[shopKey]) { all[shopKey].session = session; all[shopKey].savedAt = Date.now(); localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(all)); }
+    } catch(e){}
+  }
+}
+
 
 // ── Helpers logo ──────────────────────────────────────────────────────────
 function resizeLogoToBase64(src, maxW, maxH) {
@@ -960,6 +980,21 @@ function App() {
   const handleLogin = async () => {
     if(!authShopName.trim() || !authPassword) { setAuthError("Nom et mot de passe requis"); return; }
     setAuthLoading(true);
+    const shopKey = authShopName.trim().toLowerCase();
+    const cached = SessionCache.get(shopKey);
+
+    // Hors-ligne dès le départ → utiliser directement la session en cache
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      if (cached && cached.passwordHash === btoa(authPassword)) {
+        setSession({ ...cached.session, _offline: true });
+        flashMsg("📡 Mode hors-ligne — connexion en attente du réseau");
+      } else {
+        setAuthError(cached ? "Mot de passe incorrect (mode hors-ligne)" : "Hors-ligne : aucune session enregistrée sur cet appareil");
+      }
+      setAuthLoading(false);
+      return;
+    }
+
     try {
       const query = await db.collection("shops").where("shopName", "==", authShopName.trim()).get();
       if(query.empty) throw new Error("Commerce introuvable");
@@ -967,17 +1002,58 @@ function App() {
       const data = doc.data();
       if(btoa(authPassword) !== data.password) throw new Error("Mot de passe incorrect");
       if(data.active === false) throw new Error("Compte désactivé");
-      setSession({ 
+      const newSession = { 
         shopId: doc.id, shopName: data.shopName, shopPhone: data.phone || "", 
         whatsapp: data.whatsapp, ownerName: data.ownerName, plan: data.plan || "mensuel", 
         subscriptionEnd: data.subscriptionEnd, adminPin: data.adminPin || btoa("0000"), isDev: false,
         shopLogo: data.logoBase64 || null
-      });
-    } catch(e) { setAuthError(e.message); }
+      };
+      SessionCache.save(shopKey, newSession, authPassword);
+      setSession(newSession);
+    } catch(e) {
+      // Erreur réseau (hors-ligne, requête bloquée, etc.) → repli sur la session en cache
+      const isNetworkError = e.code === "unavailable" || /offline|network|internet|failed to get|fetch/i.test(e.message||"");
+      if (isNetworkError && cached && cached.passwordHash === btoa(authPassword)) {
+        setSession({ ...cached.session, _offline: true });
+        flashMsg("📡 Connexion au serveur impossible — mode hors-ligne activé");
+      } else {
+        setAuthError(e.message);
+      }
+    }
     setAuthLoading(false);
   };
 
   const logout = () => setSession(null);
+
+  // ── Suivi connexion réseau + resynchronisation de la session ──────────────
+  const [isOnline, setIsOnline] = useState(typeof navigator!=="undefined" ? navigator.onLine : true);
+  useEffect(() => {
+    const goOnline = async () => {
+      setIsOnline(true);
+      if (session && session._offline && session.shopId && !session.isDev) {
+        try {
+          const doc = await db.collection("shops").doc(session.shopId).get();
+          if (doc.exists) {
+            const data = doc.data();
+            const refreshed = {
+              ...session,
+              shopName: data.shopName, shopPhone: data.phone || "", whatsapp: data.whatsapp,
+              ownerName: data.ownerName, plan: data.plan || "mensuel", subscriptionEnd: data.subscriptionEnd,
+              adminPin: data.adminPin || session.adminPin, shopLogo: data.logoBase64 || session.shopLogo,
+              _offline: false
+            };
+            SessionCache.updateSession(session.shopName.trim().toLowerCase(), refreshed);
+            setSession(refreshed);
+            flashMsg("✅ Connexion rétablie — synchronisation des données…");
+          }
+        } catch(e) { /* sera retenté à la prochaine reconnexion */ }
+      }
+    };
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline); };
+  }, [session]);
 
   if (devMode) {
     return (
@@ -1029,13 +1105,13 @@ function App() {
   }
 
   if(session.isDev) return <DevDashboard T={T} themeName={themeName} setThemeName={setThemeName} logout={logout} flashMsg={flashMsg} />;
-  return <MainApp session={session} T={T} themeName={themeName} setThemeName={setThemeName} logout={logout} flashMsg={flashMsg} />;
+  return <MainApp session={session} T={T} themeName={themeName} setThemeName={setThemeName} logout={logout} flashMsg={flashMsg} isOnline={isOnline} />;
 }
 
 // ══════════════════════════════════════════════════════════════════
 //  MAIN APP AVEC BANDE D'ABONNEMENT
 // ══════════════════════════════════════════════════════════════════
-function MainApp({ session, T, themeName, setThemeName, logout, flashMsg }) {
+function MainApp({ session, T, themeName, setThemeName, logout, flashMsg, isOnline }) {
   const [products, setProducts] = useState(() => OfflineStore.get(session.shopId, "products") || []);
   const [sales, setSales] = useState(() => OfflineStore.get(session.shopId, "sales") || []);
   const [stockMovements, setStockMovements] = useState(() => OfflineStore.get(session.shopId, "stock_movements") || []);
@@ -1177,6 +1253,7 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg }) {
       setPinModal(false);
       setPinInput("");
       setOwnerMode(true);
+      setMode("CAISSE");
     } else {
       setPinError(true);
       setPinShake(true);
@@ -1198,6 +1275,12 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg }) {
     <div style={{height:"100dvh", background:T.bg, display:"flex", flexDirection:"column"}}>
       {/* BANDE D'ABONNEMENT DÉFILANTE */}
       <SubscriptionBanner T={T} shopId={session.shopId} />
+
+      {(!isOnline || session._offline) && (
+        <div style={{background:T.orange+"22", borderBottom:`1px solid ${T.orange}55`, color:T.orange, fontSize:11, fontWeight:600, textAlign:"center", padding:"4px 8px", flexShrink:0}}>
+          📡 Mode hors-ligne — vos données sont sauvegardées localement et seront synchronisées dès le retour de la connexion
+        </div>
+      )}
       
       {pinModal && (
         <div style={{position:"fixed", inset:0, background:"rgba(0,0,0,0.95)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:2000}}>
@@ -1233,6 +1316,8 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg }) {
             <button className={`theme-btn${themeName==="neon"?"  active":""}`} onClick={()=>setThemeName("neon")}  title="Néon"                  style={{background:themeName==="neon"?T.accent:"transparent",  color:themeName==="neon"?T.bg:T.textSub}}>⚡</button>
           </div>
           <button className="hdr-btn" onClick={()=>setMode("CAISSE")} style={{background:mode==="CAISSE"?T.accent:"transparent", border:"none", borderRadius:8, padding:"6px 10px", fontWeight:700, color:mode==="CAISSE"?T.bg:T.textSub}}>🛒<span className="hdr-text-label"> Caisse</span></button>
+          <button className="hdr-btn" onClick={()=>{ setOwnerMode(false); setMode("STOCK"); }} style={{background:mode==="STOCK"&&!ownerMode?T.accent:"transparent", border:"none", borderRadius:8, padding:"6px 10px", fontWeight:700, color:mode==="STOCK"&&!ownerMode?T.bg:T.textSub}}>📦<span className="hdr-text-label"> Stock</span></button>
+          <button className="hdr-btn" onClick={()=>{ setOwnerMode(false); setMode("STATS"); }} style={{background:mode==="STATS"&&!ownerMode?T.accent:"transparent", border:"none", borderRadius:8, padding:"6px 10px", fontWeight:700, color:mode==="STATS"&&!ownerMode?T.bg:T.textSub}}>📊<span className="hdr-text-label"> Stats</span></button>
           {!ownerMode ? (
             <button className="hdr-btn" onClick={enterOwnerMode} style={{background:T.btnBlue.bg, border:"none", borderRadius:8, padding:"6px 10px", fontWeight:700, color:T.blue}}>👑<span className="hdr-text-label"> Admin</span></button>
           ) : (
@@ -1332,6 +1417,14 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg }) {
       
       {ownerMode && (
         <OwnerContent T={T} shopName={session.shopName} whatsapp={session.whatsapp} products={products} setProducts={setProducts} sales={sales} flashMsg={flashMsg} shopId={session.shopId} stockMovements={stockMovements} updateStock={updateStock} updateAdminPin={updateAdminPin} credits={credits} payCredit={payCredit} caissiers={caissiers} saveCaissier={saveCaissier} deleteCaissier={deleteCaissier} loginCaissier={loginCaissier} currentCaissier={currentCaissier} shopLogo={shopLogo} setShopLogo={setShopLogo} />
+      )}
+
+      {mode === "STOCK" && !ownerMode && (
+        <StockModuleExterne T={T} products={products} stockMovements={stockMovements} updateStock={updateStock} />
+      )}
+
+      {mode === "STATS" && !ownerMode && (
+        <StatsModuleExterne T={T} products={products} sales={sales} credits={credits} shopId={session.shopId} shopName={session.shopName} whatsapp={session.whatsapp} flashMsg={flashMsg} />
       )}
     </div>
   );
@@ -2496,6 +2589,260 @@ function SectionVentes({ T, sales, hasBeneficeData }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  MODULES "HORS ADMIN" — copies accessibles sans code PIN propriétaire
+// ══════════════════════════════════════════════════════════════════
+function StockModuleExterne({ T, products, stockMovements, updateStock }) {
+  const activeProds = products.filter(p=>p.active!==false);
+  return (
+    <div style={{flex:1, overflowY:"auto", padding:12}}>
+      <div style={{fontSize:15, fontWeight:800, marginBottom:12, color:T.accent}}>📦 Gestion de stock</div>
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:12, fontWeight:600, marginBottom:8}}>📦 Niveaux de stock</div>
+        {activeProds.map(p=>(
+          <div key={p.id} style={{background:T.surface, borderRadius:12, padding:12, marginBottom:8}}>
+            <div style={{display:"flex", justifyContent:"space-between"}}><span>{p.name}</span><span>{fmtPrice(p.price)}</span></div>
+            <div style={{marginTop:6, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+              <span style={{color:p.stock===undefined||p.stock===null||p.stock===-1?T.textMute:(p.stock<=5?T.red:T.green)}}>{p.stock===undefined||p.stock===null||p.stock===-1?"♾️ Illimité":`Stock: ${p.stock}`}</span>
+              {p.stock!==undefined&&p.stock!==null&&p.stock!==-1&&(
+                <button onClick={()=>{const q=prompt("Quantité (positif=ajout, négatif=retrait):"); if(q){const n=parseInt(q); if(n!==0) updateStock(p.id, n, n>0?"entree":"sortie", "Ajustement manuel");}}} style={{background:T.btnGreen.bg, border:"none", borderRadius:8, padding:"4px 10px", fontSize:10}}>Ajuster</button>
+              )}
+            </div>
+          </div>
+        ))}
+        {activeProds.length===0 && <div style={{color:T.textMute, fontSize:12}}>Aucun produit</div>}
+      </div>
+      <div>
+        <div style={{fontSize:12, fontWeight:600, marginBottom:8}}>📋 Mouvements récents</div>
+        {stockMovements.slice(0,15).map(m=>(
+          <div key={m.id} style={{background:T.surface2, borderRadius:8, padding:8, marginBottom:6, fontSize:11}}>
+            <div style={{display:"flex", justifyContent:"space-between"}}><span>{m.productName}</span><span style={{color:m.type==="entree"?T.green:T.red}}>{m.type==="entree"?`+${m.quantity}`:`-${Math.abs(m.quantity)}`}</span></div>
+            <div style={{fontSize:9, color:T.textMute}}>{m.reason} · {new Date(m.timestamp).toLocaleTimeString()}</div>
+          </div>
+        ))}
+        {stockMovements.length===0 && <div style={{color:T.textMute, fontSize:12}}>Aucun mouvement</div>}
+      </div>
+    </div>
+  );
+}
+
+function StatsModuleExterne({ T, products, sales, credits, shopId, shopName, whatsapp, flashMsg }) {
+  const [depenses, setDepenses] = useState([]);
+
+  useEffect(() => {
+    if (!db || !shopId) return;
+    const unsub = db.collection("shops").doc(shopId).collection("depenses")
+      .orderBy("timestamp","desc")
+      .onSnapshot(snap => setDepenses(snap.docs.map(d=>({id:d.id,...d.data()}))), ()=>{});
+    return unsub;
+  }, [shopId]);
+
+  const today = new Date().toISOString().slice(0,10);
+  const todaySales = (sales||[]).filter(s=>s.date===today);
+  const caToday = todaySales.filter(s=>!s.cancelled).reduce((a,b)=>a+(b.total||0),0);
+  const lowStock = products.filter(p=>p.stock!==undefined&&p.stock!==null&&p.stock!==-1&&p.stock<=5).length;
+  const beneficeToday = todaySales.filter(s=>!s.cancelled).reduce((tot,sale)=>tot+(sale.items||[]).reduce((sub,item)=>{ if(!item.productId)return sub; const prod=products.find(p=>p.id===item.productId); if(!prod||!prod.prixAchat)return sub; return sub+(item.amount-prod.prixAchat)*(item.qty||1); },0),0);
+  const hasBeneficeData = products.some(p=>p.prixAchat>0);
+
+  const depensesToday = depenses.filter(d=>d.date===today);
+  const totalDepensesToday = depensesToday.reduce((a,b)=>a+(b.montant||0),0);
+  const beneficeNet = beneficeToday - totalDepensesToday;
+
+  const prodsAvecStock = products.filter(p=>p.active!==false && p.stock!==undefined && p.stock!==null && p.stock!==-1 && p.stock>0);
+  const valeurAchat = prodsAvecStock.reduce((a,p)=>a+((p.prixAchat||0)*p.stock),0);
+  const valeurVente = prodsAvecStock.reduce((a,p)=>a+((p.price||0)*p.stock),0);
+  const margeStock = valeurVente - valeurAchat;
+
+  const hourCount = {};
+  (sales||[]).filter(s=>!s.cancelled&&s.timestamp).forEach(s=>{ const h=new Date(s.timestamp).getHours(); hourCount[h]=(hourCount[h]||0)+1; });
+  const peakHour = Object.entries(hourCount).sort((a,b)=>b[1]-a[1])[0];
+
+  // ── Rapport semaine ISO (Lun–Dim) ──────────────────────────────────
+  const getWeekISO = () => {
+    const now = new Date();
+    const dow = now.getDay();
+    const diffToMon = (dow === 0 ? -6 : 1 - dow);
+    const lundi = new Date(now); lundi.setDate(now.getDate() + diffToMon); lundi.setHours(0,0,0,0);
+    return Array.from({length:7}, (_,i) => {
+      const d = new Date(lundi); d.setDate(lundi.getDate() + i);
+      return d.toISOString().slice(0,10);
+    });
+  };
+  const JOURS_SEMAINE = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
+  const semaineISO = getWeekISO();
+  const calcMargeSales = (ventesArr) => ventesArr.reduce((tot,sale) =>
+    tot+(sale.items||[]).reduce((sub,item) => {
+      if(!item.productId) return sub;
+      const prod = products.find(p=>p.id===item.productId);
+      if(!prod||!prod.prixAchat) return sub;
+      return sub+(item.amount-prod.prixAchat)*(item.qty||1);
+    },0),0);
+
+  const rapportSemaine = semaineISO.map((date, idx) => {
+    const isFuture = date > today;
+    const ventesJour = (sales||[]).filter(s => s.date === date && !s.cancelled);
+    const annulsJour = (sales||[]).filter(s => s.date === date && s.cancelled);
+    const ca = ventesJour.reduce((a,s) => a+(s.total||0), 0);
+    const marge = calcMargeSales(ventesJour);
+    const dep = depenses.filter(d => d.date === date).reduce((a,b) => a+(b.montant||0), 0);
+    const net = marge - dep;
+    const isToday = date === today;
+    return { date, jour: JOURS_SEMAINE[idx], isFuture, isToday, ca, marge, dep, net, nbVentes: ventesJour.length, nbAnnuls: annulsJour.length };
+  });
+  const totalSemaine = rapportSemaine.filter(r => !r.isFuture).reduce((acc, r) => ({
+    ca: acc.ca + r.ca, marge: acc.marge + r.marge, dep: acc.dep + r.dep, net: acc.net + r.net,
+    nbVentes: acc.nbVentes + r.nbVentes, nbAnnuls: acc.nbAnnuls + r.nbAnnuls
+  }), {ca:0, marge:0, dep:0, net:0, nbVentes:0, nbAnnuls:0});
+
+  const rapportWhatsAppSemaine = () => {
+    const lignes = rapportSemaine.filter(r=>!r.isFuture).map(r =>
+      `${r.jour.slice(0,3)}: CA ${fmtPrice(r.ca)} | Marge ${fmtPrice(r.marge)} | Net ${fmtPrice(r.net)}`
+    ).join("\n");
+    const txt = `📅 *Rapport Semaine — ${shopName}*\n\n${lignes}\n\n` +
+      `━━━━━━━━━━━━━\n` +
+      `📊 *TOTAL SEMAINE*\n` +
+      `CA: *${fmtPrice(totalSemaine.ca)}*\n` +
+      `Marge brute: *${fmtPrice(totalSemaine.marge)}*\n` +
+      `Dépenses: *${fmtPrice(totalSemaine.dep)}*\n` +
+      `Bénéfice net: *${fmtPrice(totalSemaine.net)}*\n` +
+      `Ventes: ${totalSemaine.nbVentes} | Annulations: ${totalSemaine.nbAnnuls}\n\n` +
+      `_Généré par Caisse Pro_`;
+    window.open(`https://wa.me/${(whatsapp||"").replace(/\D/g,"")}?text=${encodeURIComponent(txt)}`, "_blank");
+  };
+
+  return (
+    <div style={{flex:1, overflowY:"auto", padding:12}}>
+      <div style={{fontSize:15, fontWeight:800, marginBottom:12, color:T.accent}}>📊 Statistiques</div>
+      <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:8}}>
+        <div style={{background:T.surface, borderRadius:16, padding:14}}><div style={{fontSize:11, color:T.textMute}}>CA Aujourd'hui</div><div style={{fontSize:24, fontWeight:800, color:T.green}}>{fmtPrice(caToday)}</div></div>
+        <div style={{background:T.surface, borderRadius:16, padding:14}}><div style={{fontSize:11, color:T.textMute}}>Ventes</div><div style={{fontSize:24, fontWeight:800, color:T.blue}}>{todaySales.filter(s=>!s.cancelled).length}</div></div>
+        <div style={{background:T.surface, borderRadius:16, padding:14}}><div style={{fontSize:11, color:T.textMute}}>Annulations</div><div style={{fontSize:24, fontWeight:800, color:T.red}}>{todaySales.filter(s=>s.cancelled).length}</div></div>
+        <div style={{background:T.surface, borderRadius:16, padding:14}}><div style={{fontSize:11, color:T.textMute}}>Stock bas</div><div style={{fontSize:24, fontWeight:800, color:T.orange}}>{lowStock}</div></div>
+        {peakHour && <div style={{background:T.surface, borderRadius:16, padding:14}}><div style={{fontSize:11, color:T.textMute}}>Heure de pointe</div><div style={{fontSize:22, fontWeight:800, color:T.blue}}>{peakHour[0]}h</div><div style={{fontSize:10, color:T.textMute}}>{peakHour[1]} vente(s)</div></div>}
+        <div style={{background:T.surface, borderRadius:16, padding:14, border:`1px solid ${hasBeneficeData?T.accent:T.border}`, gridColumn: peakHour?"":"span 2"}}>
+          <div style={{fontSize:11, color:T.textMute}}>💰 Marge brute journalière</div>
+          {hasBeneficeData ? <><div style={{fontSize:26, fontWeight:800, color:beneficeToday>=0?T.accent:T.red}}>{fmtPrice(beneficeToday)}</div><div style={{fontSize:9, color:T.textMute, marginTop:2}}>CA: {fmtPrice(caToday)} · Avant dépenses</div></>
+            : <div style={{fontSize:11, color:T.textMute, marginTop:4}}>Renseignez le prix d'achat de vos produits</div>}
+        </div>
+        <div style={{background:T.surface, borderRadius:16, padding:14, border:`1px solid ${T.red}44`}}>
+          <div style={{fontSize:11, color:T.textMute}}>💸 Dépenses du jour</div>
+          <div style={{fontSize:22, fontWeight:800, color:T.red}}>{fmtPrice(totalDepensesToday)}</div>
+          <div style={{fontSize:9, color:T.textMute, marginTop:2}}>{depensesToday.length} opération(s)</div>
+        </div>
+        <div style={{background:T.surface, borderRadius:16, padding:14, border:`1px solid ${hasBeneficeData&&totalDepensesToday>0?T.purple:T.border}`, gridColumn:"span 2"}}>
+          <div style={{fontSize:11, color:T.textMute}}>🏆 Bénéfice net du jour</div>
+          {hasBeneficeData ? (
+            <>
+              <div style={{fontSize:26, fontWeight:800, color:beneficeNet>=0?T.green:T.red}}>{fmtPrice(beneficeNet)}</div>
+              <div style={{fontSize:9, color:T.textMute, marginTop:2}}>Marge brute {fmtPrice(beneficeToday)} − Dépenses {fmtPrice(totalDepensesToday)}</div>
+            </>
+          ) : <div style={{fontSize:11, color:T.textMute, marginTop:4}}>Renseignez le prix d'achat pour activer ce calcul</div>}
+        </div>
+        <div style={{background:T.surface, borderRadius:16, padding:14, gridColumn:"span 2", border:`1px solid ${valeurAchat>0?T.blue+"44":T.border}`}}>
+          <div style={{fontSize:11, color:T.textMute, marginBottom:6}}>📦 Valeur du stock</div>
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"baseline"}}>
+            <div><div style={{fontSize:9, color:T.textMute}}>Coût d'achat</div><div style={{fontSize:18, fontWeight:800, color:T.blue}}>{fmtPrice(valeurAchat)}</div></div>
+            <div style={{textAlign:"right"}}><div style={{fontSize:9, color:T.textMute}}>Valeur vente</div><div style={{fontSize:18, fontWeight:800, color:T.green}}>{fmtPrice(valeurVente)}</div></div>
+          </div>
+          {valeurAchat>0 && <div style={{fontSize:9, color:T.textMute, marginTop:4}}>Marge potentielle: <span style={{color:T.accent, fontWeight:700}}>{fmtPrice(margeStock)}</span></div>}
+          {valeurAchat===0 && <div style={{fontSize:10, color:T.textMute, marginTop:4}}>Renseignez le prix d'achat de vos produits</div>}
+        </div>
+        <div style={{background:T.surface, borderRadius:16, padding:14, gridColumn:"span 2"}}>
+          <div style={{fontSize:11, color:T.textMute, marginBottom:8}}>💳 Créances impayées</div>
+          <div style={{fontSize:22, fontWeight:800, color:T.orange}}>{fmtPrice((credits||[]).filter(c=>!c.paid).reduce((a,b)=>a+(b.total-(b.paidAmount||0)),0))}</div>
+          <div style={{fontSize:10, color:T.textMute}}>{(credits||[]).filter(c=>!c.paid).length} client(s) en attente</div>
+        </div>
+
+        {/* ── RAPPORT HEBDOMADAIRE ── */}
+        <div style={{gridColumn:"span 2", background:T.surface, borderRadius:16, padding:14, border:`1px solid ${T.accent}33`}}>
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
+            <div style={{fontSize:13, fontWeight:800, color:T.text}}>📅 Rapport de la semaine</div>
+            <button onClick={rapportWhatsAppSemaine} style={{background:"#25D36622", border:`1px solid #25D36644`, borderRadius:10, padding:"5px 10px", fontSize:10, fontWeight:700, color:"#25D366"}}>
+              📤 WhatsApp
+            </button>
+          </div>
+
+          {rapportSemaine.map((r) => (
+            <div key={r.date} style={{
+              marginBottom: 6, borderRadius:10, padding:"9px 10px",
+              background: r.isToday ? T.accent+"18" : r.isFuture ? T.surface2+"88" : "transparent",
+              border: r.isToday ? `1px solid ${T.accent}55` : `1px solid ${T.border}`,
+              opacity: r.isFuture ? 0.45 : 1
+            }}>
+              <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4}}>
+                <div style={{display:"flex", alignItems:"center", gap:6}}>
+                  <span style={{fontSize:11, fontWeight:800, color: r.isToday ? T.accent : r.isFuture ? T.textMute : T.text}}>
+                    {r.jour}
+                  </span>
+                  {r.isToday && <span style={{fontSize:8, background:T.accent, color:T.bg, borderRadius:5, padding:"1px 5px", fontWeight:700}}>AUJOURD'HUI</span>}
+                  {r.isFuture && <span style={{fontSize:8, color:T.textMute}}>—</span>}
+                </div>
+                <span style={{fontSize:13, fontWeight:800, color: r.isFuture ? T.textMute : r.ca>0 ? T.green : T.textMute}}>
+                  {r.isFuture ? "—" : fmtPrice(r.ca)}
+                </span>
+              </div>
+              {!r.isFuture && (
+                <div style={{display:"flex", gap:8, flexWrap:"wrap", marginTop:2}}>
+                  <span style={{fontSize:9, color:T.textMute}}>🛒 {r.nbVentes} vente{r.nbVentes!==1?"s":""}{r.nbAnnuls>0?` · ❌ ${r.nbAnnuls} annul.`:""}</span>
+                  {hasBeneficeData && r.nbVentes>0 && (
+                    <span style={{fontSize:9, fontWeight:700, color:r.marge>0?T.green:T.textMute}}>
+                      💰 Marge {fmtPrice(r.marge)}
+                    </span>
+                  )}
+                  {hasBeneficeData && r.nbVentes>0 && r.dep>0 && (
+                    <span style={{fontSize:9, color:T.red}}>💸 {fmtPrice(r.dep)}</span>
+                  )}
+                  {hasBeneficeData && r.nbVentes>0 && (
+                    <span style={{fontSize:9, fontWeight:700, color:r.net>=0?T.accent:T.red}}>
+                      🏆 Net {fmtPrice(r.net)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+
+          <div style={{marginTop:10, borderRadius:12, padding:"12px 10px", background:T.accent+"22", border:`2px solid ${T.accent}55`}}>
+            <div style={{fontSize:11, fontWeight:800, color:T.accent, marginBottom:8}}>TOTAL SEMAINE</div>
+            <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8}}>
+              <div>
+                <div style={{fontSize:9, color:T.textMute}}>Chiffre d'affaires</div>
+                <div style={{fontSize:18, fontWeight:800, color:T.green}}>{fmtPrice(totalSemaine.ca)}</div>
+              </div>
+              <div>
+                <div style={{fontSize:9, color:T.textMute}}>Ventes réalisées</div>
+                <div style={{fontSize:18, fontWeight:800, color:T.blue}}>{totalSemaine.nbVentes}</div>
+              </div>
+              {hasBeneficeData && (
+                <>
+                  <div>
+                    <div style={{fontSize:9, color:T.textMute}}>Marge brute</div>
+                    <div style={{fontSize:18, fontWeight:800, color:T.accent}}>{fmtPrice(totalSemaine.marge)}</div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9, color:T.textMute}}>Dépenses</div>
+                    <div style={{fontSize:18, fontWeight:800, color:T.red}}>{fmtPrice(totalSemaine.dep)}</div>
+                  </div>
+                  <div style={{gridColumn:"span 2"}}>
+                    <div style={{fontSize:9, color:T.textMute}}>🏆 Bénéfice net semaine</div>
+                    <div style={{fontSize:22, fontWeight:800, color:totalSemaine.net>=0?T.green:T.red}}>{fmtPrice(totalSemaine.net)}</div>
+                  </div>
+                </>
+              )}
+              {totalSemaine.nbAnnuls > 0 && (
+                <div>
+                  <div style={{fontSize:9, color:T.textMute}}>Annulations</div>
+                  <div style={{fontSize:16, fontWeight:800, color:T.red}}>{totalSemaine.nbAnnuls}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
