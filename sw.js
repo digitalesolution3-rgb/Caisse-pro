@@ -1,109 +1,72 @@
-const CACHE_NAME = 'caisse-pro-v1';
-const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  'https://cdnjs.cloudflare.com/ajax/libs/firebase/10.7.1/firebase-app-compat.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/firebase/10.7.1/firebase-firestore-compat.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/firebase/10.7.1/firebase-auth-compat.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js',
-  'https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Outfit:wght@400;500;600;700;800;900&display=swap'
+/* Caisse SaaS Pro — Service Worker (accès hors-ligne)
+   ► Placer ce fichier à la racine, à côté de index.html.
+   ► Incrémenter CACHE_VERSION à chaque déploiement de index.html. */
+const CACHE_VERSION = "caisse-v4";
+const SHELL = "shell-" + CACHE_VERSION;
+const RUNTIME = "runtime-" + CACHE_VERSION;
+
+const LOCAL_ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
+const CDN_ASSETS = [
+  "https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/firebase/10.7.1/firebase-app-compat.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/firebase/10.7.1/firebase-firestore-compat.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/firebase/10.7.1/firebase-auth-compat.min.js"
 ];
 
-// Installation du Service Worker
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
-      .then(() => self.skipWaiting())
-  );
+self.addEventListener("install", (event) => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(SHELL);
+    // allSettled : un fichier manquant (ex. icône) ne doit pas faire échouer toute l'installation
+    await Promise.allSettled([...LOCAL_ASSETS, ...CDN_ASSETS].map((u) => cache.add(u)));
+    self.skipWaiting();
+  })());
 });
 
-// Activation et nettoyage des anciens caches
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
-  );
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    const keep = [SHELL, RUNTIME];
+    for (const k of await caches.keys()) if (!keep.includes(k)) await caches.delete(k);
+    await self.clients.claim();
+  })());
 });
 
-// Stratégie de cache: Network First avec fallback
-self.addEventListener('fetch', event => {
-  // Ne pas intercepter les appels Firebase (préserver la synchronisation temps réel)
-  if (event.request.url.includes('firebase') || 
-      event.request.url.includes('firestore') ||
-      event.request.url.includes('googleapis')) {
+self.addEventListener("message", (e) => { if (e.data === "SKIP_WAITING") self.skipWaiting(); });
+
+// Ne jamais intercepter Firestore / Auth : le SDK gère lui-même son cache hors-ligne (IndexedDB)
+const BYPASS = /(firestore|firebaseio|identitytoolkit|securetoken|googleapis)\.com\/(?!css|.*\.woff)/;
+
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "GET") return;
+  const url = new URL(req.url);
+  if (BYPASS.test(req.url) && !/fonts\.(googleapis|gstatic)\.com/.test(url.host)) return;
+
+  // Pages : réseau d'abord (4 s) pour récupérer les mises à jour, sinon version en cache
+  if (req.mode === "navigate") {
+    event.respondWith((async () => {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 4000);
+        const fresh = await fetch(req, { signal: ctrl.signal });
+        clearTimeout(t);
+        const c = await caches.open(SHELL); c.put("./index.html", fresh.clone());
+        return fresh;
+      } catch (_) {
+        return (await caches.match("./index.html")) || (await caches.match("./")) || Response.error();
+      }
+    })());
     return;
   }
-  
-  // Pour les requêtes POST, ne pas cacher
-  if (event.request.method !== 'GET') {
-    return;
-  }
-  
-  event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        // Mettre en cache les réponses réussies
-        if (response && response.status === 200) {
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME)
-            .then(cache => {
-              cache.put(event.request, responseToCache);
-            });
-        }
-        return response;
-      })
-      .catch(() => {
-        // Fallback: retourner depuis le cache
-        return caches.match(event.request)
-          .then(response => {
-            if (response) {
-              return response;
-            }
-            // Si la page index.html est demandée et pas en cache
-            if (event.request.url.endsWith('/') || event.request.url.includes('index.html')) {
-              return caches.match('/index.html');
-            }
-            return new Response('Hors ligne - Contenu non disponible', {
-              status: 503,
-              statusText: 'Service Unavailable'
-            });
-          });
-      })
-  );
-});
 
-// Gestion des notifications push (optionnel)
-self.addEventListener('push', event => {
-  const data = event.data ? event.data.json() : {};
-  const options = {
-    body: data.body || 'Nouvelle notification',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    vibrate: [200, 100, 200],
-    data: {
-      url: data.url || '/'
-    }
-  };
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'Caisse Pro', options)
-  );
-});
-
-// Gestion du clic sur notification
-self.addEventListener('notificationclick', event => {
-  event.notification.close();
-  event.waitUntil(
-    clients.openWindow(event.notification.data.url)
-  );
+  // Ressources (CDN versionnés, polices, icônes) : cache d'abord, revalidation en arrière-plan
+  event.respondWith((async () => {
+    const cached = await caches.match(req);
+    const network = fetch(req).then(async (res) => {
+      if (res && (res.ok || res.type === "opaque")) { const c = await caches.open(RUNTIME); c.put(req, res.clone()); }
+      return res;
+    }).catch(() => null);
+    return cached || (await network) || Response.error();
+  })());
 });

@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -31,10 +31,11 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
-body{font-family:'DM Mono','Courier New',monospace;-webkit-tap-highlight-color:transparent;transition:background .3s ease}
+body{font-family:'Outfit','Segoe UI',system-ui,-apple-system,sans-serif;-webkit-tap-highlight-color:transparent;transition:background .3s ease,color .3s ease;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.mono{font-family:'DM Mono','Courier New',monospace}
 #root{height:100dvh;display:flex;flex-direction:column}
 input,button,select,textarea{font-family:inherit}
-button{cursor:pointer;transition:opacity .12s,transform .12s,background .22s,color .22s,box-shadow .22s}
+button{cursor:pointer;color:inherit;transition:opacity .12s,transform .12s,background .22s,color .22s,box-shadow .22s;touch-action:manipulation}
 button:active{opacity:.72!important;transform:scale(.96)!important}
 
 /* Scrollbars */
@@ -46,7 +47,65 @@ button:active{opacity:.72!important;transform:scale(.96)!important}
 [data-theme="dark"]  ::-webkit-scrollbar-track{background:#0F1117}
 
 /* Transitions globales thème */
-div,span,input,textarea,button,label{transition:background .22s ease,border-color .22s ease,color .15s ease,box-shadow .22s ease}
+/* (perf) la transition globale sur tous les div/span ralentissait les téléphones d'entrée de gamme : ciblée désormais */
+.pos-header,.pos-card,.tile,input,textarea{transition:background .22s ease,border-color .22s ease,color .15s ease,box-shadow .22s ease}
+:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+input:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px rgba(120,140,255,.45)}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* ── Catalogue en MOSAÏQUE ───────────────────────────────────── */
+.catalog-bar{position:sticky;top:-12px;z-index:5;padding:8px 0 4px;margin-top:-4px}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.mosaic{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(var(--tile-min,148px),1fr));padding-bottom:8px}
+.mosaic.dense{--tile-min:108px;gap:8px}
+.mosaic.list{grid-template-columns:1fr;gap:6px}
+.tile{position:relative;display:flex;flex-direction:column;overflow:hidden;border-radius:16px;min-width:0;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:manipulation;content-visibility:auto;contain-intrinsic-size:auto 190px;transition:transform .12s,border-color .2s,box-shadow .2s}
+.tile:active{transform:scale(.965)}
+.tile:hover{box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.tile-visual{position:relative;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.mosaic.dense .tile-visual{aspect-ratio:16/10}
+.tile-visual img{width:100%;height:100%;object-fit:cover;display:block}
+.tile-body{padding:8px 10px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tile-name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25;min-height:2.5em;word-break:break-word}
+.tile-price{font-weight:800;font-size:14px;font-variant-numeric:tabular-nums}
+.tile-cat{font-size:10px;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile-chip{position:absolute;font-size:9px;font-weight:800;padding:2px 7px;border-radius:20px;letter-spacing:.2px}
+.tile-qty{position:absolute;top:6px;right:6px;min-width:24px;height:24px;border-radius:12px;padding:0 6px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.tile-minus{position:absolute;top:6px;left:6px;width:30px;height:30px;border-radius:15px;border:none;font-size:18px;font-weight:800;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.mosaic.list .tile{flex-direction:row;align-items:center;border-radius:14px}
+.mosaic.list .tile-visual{width:60px;height:60px;aspect-ratio:1;flex-shrink:0;border-radius:12px;margin:6px}
+.mosaic.list .tile-body{flex:1;padding:6px 10px 6px 4px}
+.mosaic.list .tile-name{min-height:0;-webkit-line-clamp:1}
+.mosaic.list .tile-minus{top:50%;left:auto;right:44px;margin-top:-15px}
+.mosaic.list .tile-qty{top:50%;margin-top:-12px;right:10px}
+.offline-chip{display:flex;align-items:center;gap:6px;border-radius:10px;padding:6px 10px;font-size:11px;font-weight:600;margin-bottom:8px}
+@keyframes popIn{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+.tile-qty{animation:popIn .16s ease}
+/* ── Encaissement (modale responsive : bottom-sheet mobile, carte centrée tablette/desktop) ── */
+.pay-overlay{position:fixed;inset:0;z-index:1500;background:rgba(0,0,0,.62);display:flex;align-items:flex-end;justify-content:center}
+.pay-sheet{width:100%;max-width:470px;max-height:100dvh;display:flex;flex-direction:column;border-radius:22px 22px 0 0;overflow:hidden;animation:sheetUp .22s ease;box-shadow:0 -10px 40px rgba(0,0,0,.4)}
+.pay-body{overflow-y:auto;padding:0 16px 10px;flex:1;min-height:0;-webkit-overflow-scrolling:touch}
+.pay-foot{padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));display:grid;gap:8px}
+.pay-cash{display:flex;flex-direction:column;gap:10px}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.keypad button,.qs-key{height:clamp(44px,7vh,60px);border-radius:12px;font-size:22px;font-weight:600}
+@media (min-width:600px){.pay-overlay{align-items:center}.pay-sheet{border-radius:22px;max-height:92dvh}}
+@media (min-width:780px) and (min-height:560px){.pay-sheet{max-width:780px}.pay-cash{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}}
+@keyframes sheetUp{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+/* ── Vente rapide responsive (container query : s'adapte à la place réellement disponible) ── */
+.qs-wrap{container-type:inline-size;width:100%}
+.qs-grid{display:flex;flex-direction:column;gap:10px}
+.qs-right{position:sticky;bottom:0;background:var(--qs-bg);padding-top:8px;z-index:10}
+.qs-amount{font-size:clamp(28px,9vw,42px);font-weight:800;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@container (min-width:560px){
+  .qs-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(290px,370px);gap:16px;align-items:start}
+  .qs-right{position:sticky;top:8px;bottom:auto;padding-top:0}
+}
+@media (max-height:520px){.qs-right{position:static}}
+/* iOS / Android : encoches et barre de navigation */
+.pos-header{padding-top:calc(8px + env(safe-area-inset-top,0px))!important}
+.mobile-cart-fab{bottom:calc(20px + env(safe-area-inset-bottom,0px))!important}
 
 /* Mode clair — ombre header + cartes */
 [data-theme="light"] .pos-header  { box-shadow: 0 1px 0 #D0D9E8, 0 4px 16px rgba(15,23,42,.06); }
@@ -135,6 +194,10 @@ try {
     }
   });
 } catch(e) { console.warn(e); }
+
+// FIX : `let db` n'est pas une propriété de window ; OwnerContent lisait window.db (undefined)
+// → les produits créés/modifiés/supprimés en Admin n'étaient jamais envoyés à Firestore.
+window.db = db; window.auth = auth;
 
 const DEV_PIN = "761278";
 const DEV_WHATSAPP = "22678548317";
@@ -249,7 +312,48 @@ function getStoreKey(shopId, type) { return `pos_${shopId}_${type}`; }
 
 class OfflineStore {
   static get(shopId, type) { try { const d = localStorage.getItem(getStoreKey(shopId, type)); return d ? JSON.parse(d) : []; } catch(e){ return []; } }
-  static set(shopId, type, data) { try { localStorage.setItem(getStoreKey(shopId, type), JSON.stringify(data || [])); } catch(e){} }
+  static set(shopId, type, data) {
+    try { localStorage.setItem(getStoreKey(shopId, type), JSON.stringify(data || [])); return true; }
+    catch(e) { console.warn("[OfflineStore] écriture impossible (quota ?)", type, e); return false; }
+  }
+  // Date de la dernière synchronisation RÉELLE avec le serveur (pas une simple écriture locale)
+  static markSynced(shopId, type) { try { localStorage.setItem(getStoreKey(shopId, type) + "_synced", String(Date.now())); } catch(e){} }
+  static syncedAt(shopId, type) { try { const v = localStorage.getItem(getStoreKey(shopId, type) + "_synced"); return v ? parseInt(v, 10) : null; } catch(e){ return null; } }
+}
+
+// ── Moyens de paiement (ajoutez-en d'autres ici : Coris Money, Wave…) ─────
+const PAY_METHODS = {
+  cash:   { id: "cash",   label: "Espèces",      short: "Espèces", icon: "💵", color: "#16A34A", ticket: "Especes" },
+  orange: { id: "orange", label: "Orange Money", short: "Orange",  icon: "🟠", color: "#FF7900", ticket: "Orange Money" },
+  moov:   { id: "moov",   label: "Moov Money",   short: "Moov",    icon: "🔵", color: "#0B6FD6", ticket: "Moov Money" },
+};
+
+// ── Helpers catalogue ─────────────────────────────────────────────────────
+const norm = (v) => (v == null ? "" : String(v)).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+function hashHue(str) { let h = 0; const t = String(str || "?"); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0; return h % 360; }
+function initials(name) { const w = String(name || "?").trim().split(/\s+/).filter(Boolean); return ((w[0]||"?")[0] + (w[1] ? w[1][0] : (w[0]||"")[1] || "")).toUpperCase(); }
+function timeAgo(ts) {
+  if (!ts) return ""; const m = Math.floor((Date.now() - ts) / 60000);
+  if (m < 1) return "à l'instant"; if (m < 60) return `il y a ${m} min`;
+  const h = Math.floor(m / 60); if (h < 24) return `il y a ${h} h`;
+  return `il y a ${Math.floor(h / 24)} j`;
+}
+// Miniature carrée JPEG (≈ 5-9 Ko) : légère pour Firestore et pour le stockage hors-ligne
+function resizeImageToJpeg(src, size, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.width, img.height);
+      const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+      const c = document.createElement("canvas"); c.width = c.height = size;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, size, size);
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+      resolve(c.toDataURL("image/jpeg", quality || 0.7));
+    };
+    img.onerror = reject;
+    img.src = src;
+  });
 }
 
 // ── Cache de session pour connexion hors-ligne ─────────────────────────────
@@ -332,32 +436,25 @@ async function logoToESCPOS(base64, maxWidth) {
 
 function syncShopData(shopId, setProducts, setSales, setStockMovements, setCredits, setCaissiers) {
   if(!db) return ()=>{};
-  const unsubProds = db.collection("shops").doc(shopId).collection("products").onSnapshot(snap => {
-    const prods = snap.docs.map(d=>({id:d.id, ...d.data()})).filter(p => p.id !== "_init");
-    OfflineStore.set(shopId, "products", prods);
-    setProducts && setProducts(prods);
-  });
-  const unsubSales = db.collection("shops").doc(shopId).collection("sales").onSnapshot(snap => {
-    const sales = snap.docs.map(d=>({id:d.id, ...d.data()})).filter(s => s.id !== "_init");
-    OfflineStore.set(shopId, "sales", sales);
-    setSales && setSales(sales);
-  });
-  const unsubMovements = db.collection("shops").doc(shopId).collection("stock_movements").onSnapshot(snap => {
-    const movements = snap.docs.map(d=>({id:d.id, ...d.data()}));
-    OfflineStore.set(shopId, "stock_movements", movements);
-    setStockMovements && setStockMovements(movements);
-  });
-  const unsubCredits = db.collection("shops").doc(shopId).collection("credits").onSnapshot(snap => {
-    const credits = snap.docs.map(d=>({id:d.id, ...d.data()}));
-    OfflineStore.set(shopId, "credits", credits);
-    setCredits && setCredits(credits);
-  });
-  const unsubCaissiers = db.collection("shops").doc(shopId).collection("caissiers").onSnapshot(snap => {
-    const caissiers = snap.docs.map(d=>({id:d.id, ...d.data()}));
-    OfflineStore.set(shopId, "caissiers", caissiers);
-    setCaissiers && setCaissiers(caissiers);
-  });
-  return () => { unsubProds(); unsubSales(); unsubMovements(); unsubCredits(); unsubCaissiers(); };
+  const listen = (coll, type, setter) =>
+    db.collection("shops").doc(shopId).collection(coll).onSnapshot(snap => {
+      const fromCache = snap.metadata.fromCache;
+      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.id !== "_init");
+      // PROTECTION HORS-LIGNE : un cache Firestore vide (appareil hors-ligne / cache purgé)
+      // ne doit JAMAIS effacer les données déjà sauvegardées localement.
+      if (fromCache && rows.length === 0 && OfflineStore.get(shopId, type).length > 0) return;
+      OfflineStore.set(shopId, type, rows);
+      if (!fromCache) OfflineStore.markSynced(shopId, type);
+      setter && setter(rows);
+    }, err => console.warn("[sync]", coll, err && err.code));
+  const unsubs = [
+    listen("products", "products", setProducts),
+    listen("sales", "sales", setSales),
+    listen("stock_movements", "stock_movements", setStockMovements),
+    listen("credits", "credits", setCredits),
+    listen("caissiers", "caissiers", setCaissiers),
+  ];
+  return () => unsubs.forEach(u => u());
 }
 
 // ── Helpers export CSV ────────────────────────────────────────────────
@@ -539,7 +636,7 @@ const COL_80 = 42;
 const COL_57 = 32;
 const COL = 42; // default 80mm
 
-async function buildESCPOSTicket(shopName, shopPhone, items, total, invoiceNum, col, shopLogo) {
+async function buildESCPOSTicket(shopName, shopPhone, items, total, invoiceNum, col, shopLogo, payment) {
   const C = col || COL_80;
   const buf = [];
   const push = (arr) => buf.push(...arr);
@@ -598,6 +695,12 @@ async function buildESCPOSTicket(shopName, shopPhone, items, total, invoiceNum, 
   const totalStr = "TOTAL" + " ".repeat(Math.max(1, C - 5 - fmtPrice(total).length)) + fmtPrice(total);
   line(totalStr);
   push([ESC, 0x45, 0x00]);
+  if (payment && PAY_METHODS[payment.method]) {
+    const kv = (k, v) => line(k + " ".repeat(Math.max(1, C - k.length - v.length)) + v);
+    kv("Paiement", PAY_METHODS[payment.method].ticket);
+    if (payment.method === "cash") { kv("Recu", fmtPrice(payment.received)); kv("Rendu", fmtPrice(payment.change)); }
+    else if (payment.ref) kv("Ref", String(payment.ref).slice(0, Math.max(4, C - 4)));
+  }
   line("=".repeat(C));
   
   push([ESC, 0x61, 0x01]);
@@ -609,15 +712,15 @@ async function buildESCPOSTicket(shopName, shopPhone, items, total, invoiceNum, 
   return new Uint8Array(buf);
 }
 
-async function printViaBLE(shopName, shopPhone, items, total, invoiceNum, ticketFormat, shopLogo) {
+async function printViaBLE(shopName, shopPhone, items, total, invoiceNum, ticketFormat, shopLogo, payment) {
   if (!printer.connected) throw new Error("Imprimante non connectée");
   const col = ticketFormat === "57mm" ? COL_57 : COL_80;
-  const ticket = await buildESCPOSTicket(shopName, shopPhone, items, total, invoiceNum, col, shopLogo);
+  const ticket = await buildESCPOSTicket(shopName, shopPhone, items, total, invoiceNum, col, shopLogo, payment);
   await printer.print(ticket);
   return true;
 }
 
-function printFallback(shopName, shopPhone, items, total, invoiceNum, ticketFormat, shopLogo) {
+function printFallback(shopName, shopPhone, items, total, invoiceNum, ticketFormat, shopLogo, payment) {
   const w = ticketFormat === "57mm" ? "50mm" : "70mm";
   let html = `<html><head><meta charset="utf-8"><title>Ticket</title><style>body{font-family:monospace;width:${w};margin:0 auto;padding:10px}.center{text-align:center}.item{display:flex;justify-content:space-between;margin:3px 0}.total{display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px dashed #000;font-weight:bold}</style></head><body>`;
   if(shopLogo) html += `<div class="center"><img src="${shopLogo}" style="max-width:160px;max-height:60px;margin:0 auto 6px;display:block;" /></div>`;
@@ -626,7 +729,7 @@ function printFallback(shopName, shopPhone, items, total, invoiceNum, ticketForm
   html += `<div class="center">${new Date().toLocaleString()}</div>`;
   if(invoiceNum) html += `<div class="center">N° ${String(invoiceNum).slice(-8)}</div><hr>`;
   items.forEach(it => { const qty=it.qty||1; html += `<div class="item"><span>${it.label}${qty>1?` x${qty}`:''}</span><span>${fmtPrice(it.amount*qty)}</span></div>`; if(qty>1) html += `<div style="font-size:10px;margin-left:8px;">@ ${fmtPrice(it.amount)}</div>`; });
-  html += `<hr><div class="total"><span>TOTAL</span><span>${fmtPrice(total)}</span></div><hr><div class="center">Merci !</div></body></html>`;
+  html += `<hr><div class="total"><span>TOTAL</span><span>${fmtPrice(total)}</span></div><hr>${payment && PAY_METHODS[payment.method] ? `<div class="item"><span>Paiement</span><span>${PAY_METHODS[payment.method].label}</span></div>${payment.method === "cash" ? `<div class="item"><span>Reçu</span><span>${fmtPrice(payment.received)}</span></div><div class="item"><span>Rendu</span><span>${fmtPrice(payment.change)}</span></div>` : (payment.ref ? `<div class="item"><span>Réf.</span><span>${payment.ref}</span></div>` : "")}<hr>` : ""}<div class="center">Merci !</div></body></html>`;
   const win = window.open("", "_blank", "width=400,height=600");
   if(win) { win.document.write(html); win.document.close(); win.print(); setTimeout(()=>win.close(),1500); }
 }
@@ -778,117 +881,83 @@ function BLEStatus({ T }) {
 // ══════════════════════════════════════════════════════════════════
 //  COMPOSANT VENTE RAPIDE
 // ══════════════════════════════════════════════════════════════════
-function VenteRapide({ T, addSale, flashMsg }) {
+function VenteRapide({ T, addSale, flashMsg, printLabel }) {
   const [lines, setLines] = useState([]);
   const [montant, setMontant] = useState("");
   const [label, setLabel] = useState("");
-  const [modeMonnaie, setModeMonnaie] = useState(false);
-  const [recu, setRecu] = useState("");
-  
+  const [payModal, setPayModal] = useState(false);
+
   const montantNum = parseInt(montant) || 0;
-  const totalLines = lines.reduce((s,l)=>s + l.montant, 0);
-  const recuNum = parseInt(recu) || 0;
-  const monnaie = recuNum - totalLines;
-  const BILLS = [500, 1000, 2000, 5000, 10000, 25000];
-  
+  const totalLines = lines.reduce((s, l) => s + l.montant, 0);
+  const totalAll = totalLines + montantNum;   // inclut la saisie en cours (pas besoin d'« Ajouter » pour la dernière ligne)
+
   const ajouterLigne = () => {
-    if(!montantNum || montantNum < 1) { flashMsg("Entrez un montant"); return; }
+    if (!montantNum || montantNum < 1) { flashMsg("Entrez un montant"); return; }
     const nom = label.trim() || `Vente ${fmtPrice(montantNum)}`;
-    setLines([...lines, { id: Date.now()+Math.random(), label: nom, montant: montantNum }]);
-    setMontant("");
-    setLabel("");
+    setLines([...lines, { id: Date.now() + Math.random(), label: nom, montant: montantNum }]);
+    setMontant(""); setLabel("");
   };
-  
-  const supprimerLigne = (id) => setLines(lines.filter(l=>l.id!==id));
-  const reset = () => { setLines([]); setMontant(""); setLabel(""); setModeMonnaie(false); setRecu(""); };
-  
-  const valider = (print) => {
-    if(lines.length === 0) { flashMsg("Ajoutez des lignes"); return; }
-    const items = lines.map(l => ({ label: l.label, amount: l.montant, qty: 1 }));
-    addSale(items, totalLines, print);
+  const supprimerLigne = (id) => setLines(lines.filter(l => l.id !== id));
+  const reset = () => { setLines([]); setMontant(""); setLabel(""); setPayModal(false); };
+  const encaisser = () => { if (totalAll <= 0) { flashMsg("Entrez un montant"); return; } setPayModal(true); };
+  const onPaid = (payment, print) => {
+    const all = montantNum > 0 ? [...lines, { label: label.trim() || `Vente ${fmtPrice(montantNum)}`, montant: montantNum }] : lines;
+    addSale(all.map(l => ({ label: l.label, amount: l.montant, qty: 1 })), totalAll, print, payment);
     reset();
   };
-  
-  const pushDigit = (d) => {
-    if(modeMonnaie) setRecu(p => p.length >= 8 ? p : p + d);
-    else setMontant(p => p.length >= 8 ? p : p + d);
-  };
-  const del = () => {
-    if(modeMonnaie) setRecu(p => p.slice(0,-1));
-    else setMontant(p => p.slice(0,-1));
-  };
-  
+  const pushDigit = (d) => setMontant(p => (p.length >= 8 ? p : (p === "" && (d === "0" || d === "00") ? p : p + d)));
+  const del = () => setMontant(p => p.slice(0, -1));
+  const key = { background: T.surface2, border: `1px solid ${T.border}`, color: T.text };
+
   return (
-    <div style={{display:"flex", flexDirection:"column"}}>
-      <div style={{padding:"0 0 4px"}}>
-        <div style={{background:T.surface, borderRadius:16, padding:16, marginBottom:12, border:`2px solid ${modeMonnaie ? T.blue : (montantNum>0 ? T.accent : T.border)}`}}>
-          {!modeMonnaie && <input placeholder="Libellé (optionnel)" value={label} onChange={e=>setLabel(e.target.value)} style={{width:"100%", background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:10, padding:10, marginBottom:10, color:T.text}} />}
-          <div style={{display:"flex", justifyContent:"space-between", alignItems:"baseline"}}>
-            <span style={{fontSize:11, color:T.textMute}}>{modeMonnaie ? "Montant reçu" : "Montant"}</span>
-            <span style={{fontSize:36, fontWeight:800, color:modeMonnaie ? T.blue : (montantNum>0 ? T.accent : T.textMute)}}>
-              {modeMonnaie ? (recu ? fmtPrice(recuNum) : "—") : (montant ? fmtPrice(montantNum) : "0 F")}
-            </span>
-          </div>
-        </div>
-        
-        {modeMonnaie && (
-          <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:12}}>
-            {BILLS.map(b=><button key={b} onClick={()=>setRecu(String(b))} style={{background:T.surface, border:`1px solid ${T.border}`, borderRadius:12, padding:12, fontWeight:700}}>{b>=1000?(b/1000)+"k":b}</button>)}
-          </div>
-        )}
-        
-        {lines.length > 0 && (
-          <div style={{marginBottom:12}}>
-            <div style={{fontSize:10, color:T.textMute, marginBottom:6}}>Lignes ({lines.length})</div>
-            {lines.map((l,idx)=>(
-              <div key={l.id} style={{background:T.surface2, borderRadius:10, padding:10, marginBottom:6, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-                <div><span style={{color:T.textMute, marginRight:8}}>{idx+1}.</span><span>{l.label}</span></div>
-                <div style={{display:"flex", alignItems:"center", gap:10}}>
-                  <span style={{fontWeight:700, color:T.accent}}>{fmtPrice(l.montant)}</span>
-                  {!modeMonnaie && <button onClick={()=>supprimerLigne(l.id)} style={{background:T.btnRed.bg, border:"none", borderRadius:6, width:28, height:28, color:T.red, fontSize:16}}>×</button>}
-                </div>
-              </div>
-            ))}
-            <div style={{background:T.btnGreen.bg, borderRadius:12, padding:12, marginTop:6, display:"flex", justifyContent:"space-between", border:`1px solid ${T.green}`}}>
-              <span style={{fontWeight:700}}>TOTAL</span>
-              <span style={{fontSize:20, fontWeight:800, color:T.green}}>{fmtPrice(totalLines)}</span>
+    <div className="qs-wrap">
+      <div className="qs-grid" style={{ "--qs-bg": T.bg }}>
+        <div className="qs-left" style={{ minWidth: 0 }}>
+          <div style={{ background: T.surface, borderRadius: 16, padding: 14, marginBottom: 10, border: `2px solid ${montantNum > 0 ? T.accent : T.border}` }}>
+            <input placeholder="Libellé (optionnel)" value={label} onChange={e => setLabel(e.target.value)}
+              style={{ width: "100%", background: T.inputBg, border: `1px solid ${T.inputBd}`, borderRadius: 10, padding: 10, marginBottom: 10, color: T.text, fontSize: 14 }} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+              <span style={{ fontSize: 11, color: T.textMute }}>Montant</span>
+              <span className="qs-amount" style={{ color: montantNum > 0 ? T.accent : T.textMute }}>{montant ? fmtPrice(montantNum) : "0 F"}</span>
             </div>
           </div>
-        )}
-        
-        {modeMonnaie && recuNum > 0 && (
-          <div style={{background:monnaie>=0 ? T.btnGreen.bg : T.btnRed.bg, borderRadius:12, padding:16, textAlign:"center", marginBottom:12}}>
-            <div style={{fontSize:11, color:T.textMute}}>Monnaie à rendre</div>
-            <div style={{fontSize:32, fontWeight:800, color:monnaie>=0 ? T.green : T.red}}>{monnaie>=0 ? fmtPrice(monnaie) : `-${fmtPrice(Math.abs(monnaie))}`}</div>
+
+          {lines.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 10, color: T.textMute, marginBottom: 6 }}>Lignes ({lines.length})</div>
+              {lines.map((l, idx) => (
+                <div key={l.id} style={{ background: T.surface2, borderRadius: 10, padding: 10, marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><span style={{ color: T.textMute, marginRight: 8 }}>{idx + 1}.</span><span>{l.label}</span></div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                    <span style={{ fontWeight: 700, color: T.accent }}>{fmtPrice(l.montant)}</span>
+                    <button onClick={() => supprimerLigne(l.id)} aria-label="Supprimer la ligne" style={{ background: T.btnRed.bg, border: "none", borderRadius: 8, width: 34, height: 34, color: T.red, fontSize: 16 }}>×</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ background: T.btnGreen.bg, borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", border: `1px solid ${totalAll > 0 ? T.green : T.border}` }}>
+            <span style={{ fontWeight: 700 }}>TOTAL</span>
+            <span style={{ fontSize: 22, fontWeight: 800, color: totalAll > 0 ? T.green : T.textMute }}>{fmtPrice(totalAll)}</span>
           </div>
-        )}
-      </div>
-      
-      <div style={{position:"sticky", bottom:0, background:T.bg, padding:"10px 0 0", zIndex:10}}>
-        <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6}}>
-          {[7,8,9,4,5,6,1,2,3].map(d=><button key={d} onClick={()=>pushDigit(String(d))} style={{background:T.surface2, border:`1px solid ${T.border}`, borderRadius:12, height:58, fontSize:24, fontWeight:600, color:T.text}}>{d}</button>)}
-          <button onClick={()=>pushDigit("00")} style={{background:T.surface2, border:`1px solid ${T.border}`, borderRadius:12, height:58, fontSize:18}}>00</button>
-          <button onClick={()=>pushDigit("0")} style={{background:T.surface2, border:`1px solid ${T.border}`, borderRadius:12, height:58, fontSize:24}}>0</button>
-          <button onClick={del} style={{background:T.btnRed.bg, border:`1px solid ${T.red}44`, borderRadius:12, height:58, fontSize:20, color:T.red}}>⌫</button>
         </div>
-        
-        {!modeMonnaie ? (
-          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginTop:8}}>
-            <button onClick={reset} style={{background:"transparent", border:`1px solid ${T.red}44`, borderRadius:12, padding:12, color:T.red, fontWeight:600}}>✕ Annuler</button>
-            <button onClick={ajouterLigne} style={{background:T.btnBlue.bg, border:`1px solid ${T.border}`, borderRadius:12, padding:12, color:T.blue, fontWeight:700}}>➕ Ajouter ligne</button>
-            <button onClick={()=>{ if(lines.length) setModeMonnaie(true); else flashMsg("Ajoutez des lignes d'abord"); }} style={{background:T.surface2, border:`1px solid ${T.border}`, borderRadius:12, padding:12, fontWeight:600}}>💵 Monnaie</button>
-            <button onClick={()=>valider(true)} style={{background:T.btnGreen.bg, border:`2px solid ${T.green}`, borderRadius:12, padding:12, color:T.green, fontWeight:800}}>🖨️ Valider</button>
+
+        <div className="qs-right">
+          <div className="keypad">
+            {[7, 8, 9, 4, 5, 6, 1, 2, 3].map(d => <button key={d} onClick={() => pushDigit(String(d))} style={key}>{d}</button>)}
+            <button onClick={() => pushDigit("00")} style={{ ...key, fontSize: 18 }}>00</button>
+            <button onClick={() => pushDigit("0")} style={key}>0</button>
+            <button onClick={del} aria-label="Effacer" style={{ background: T.btnRed.bg, border: `1px solid ${T.red}44`, color: T.red }}>⌫</button>
           </div>
-        ) : (
-          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginTop:8}}>
-            <button onClick={()=>{ setModeMonnaie(false); setRecu(""); }} style={{background:T.surface2, border:`1px solid ${T.border}`, borderRadius:12, padding:12}}>← Retour</button>
-            <button onClick={()=>valider(false)} style={{background:T.btnBlue.bg, border:`1px solid ${T.border}`, borderRadius:12, padding:12, color:T.blue, fontWeight:600}}>✅ Sans ticket</button>
-            <button onClick={()=>valider(true)} style={{background:T.btnGreen.bg, border:`2px solid ${T.green}`, borderRadius:12, padding:12, color:T.green, fontWeight:800}}>🖨️ Imprimer</button>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+            <button onClick={reset} style={{ minHeight: 46, background: "transparent", border: `1px solid ${T.red}44`, borderRadius: 12, color: T.red, fontWeight: 600 }}>✕ Annuler</button>
+            <button onClick={ajouterLigne} style={{ minHeight: 46, background: T.btnBlue.bg, border: `1px solid ${T.border}`, borderRadius: 12, color: T.blue, fontWeight: 700 }}>➕ Ajouter ligne</button>
+            <button onClick={encaisser} style={{ gridColumn: "1 / -1", minHeight: 54, background: totalAll > 0 ? T.green : T.surface2, border: "none", borderRadius: 14, color: totalAll > 0 ? T.bg : T.textMute, fontWeight: 800, fontSize: 15 }}>💰 Encaisser · {fmtPrice(totalAll)}</button>
           </div>
-        )}
-        {/* Spacer FAB mobile */}
-        <div style={{height:80}} />
+        </div>
       </div>
+      {payModal && <PaymentModal T={T} total={totalAll} printLabel={printLabel} onClose={() => setPayModal(false)} onConfirm={onPaid} />}
     </div>
   );
 }
@@ -910,7 +979,7 @@ function App() {
   }, [themeName]);
   const [session, setSession] = useState(null);
   const [authMode, setAuthMode] = useState("login");
-  const [authShopName, setAuthShopName] = useState("");
+  const [authShopName, setAuthShopName] = useState(() => { try { return localStorage.getItem("pos_last_shop") || ""; } catch(e){ return ""; } });
   const [authOwnerName, setAuthOwnerName] = useState("");
   const [authWhatsapp, setAuthWhatsapp] = useState("");
   const [authPhone, setAuthPhone] = useState("");
@@ -927,7 +996,7 @@ function App() {
   
   const flashMsg = (msg) => { setFlash(msg); setTimeout(()=>setFlash(null),2500); };
 
-  useEffect(()=>{ document.body.style.background = T.bg; document.documentElement.setAttribute("data-theme", T.mode||"dark"); localStorage.setItem("pos_theme", themeName); }, [themeName, T.bg]);
+  useEffect(()=>{ document.body.style.background = T.bg; document.body.style.color = T.text; document.documentElement.setAttribute("data-theme", T.mode||"dark"); localStorage.setItem("pos_theme", themeName); }, [themeName, T.bg]);
 
   const handleLogoTripleClick = () => {
     const ref = clickCountRef.current;
@@ -996,7 +1065,11 @@ function App() {
     }
 
     try {
-      const query = await db.collection("shops").where("shopName", "==", authShopName.trim()).get();
+      // Timeout : réseau « présent mais inutilisable » → bascule rapide vers la session en cache (8 s)
+      const query = await Promise.race([
+        db.collection("shops").where("shopName", "==", authShopName.trim()).get(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("network timeout")), 8000))
+      ]);
       if(query.empty) throw new Error("Commerce introuvable");
       const doc = query.docs[0];
       const data = doc.data();
@@ -1009,6 +1082,7 @@ function App() {
         shopLogo: data.logoBase64 || null
       };
       SessionCache.save(shopKey, newSession, authPassword);
+      try { localStorage.setItem("pos_last_shop", authShopName.trim()); } catch(e){}
       setSession(newSession);
     } catch(e) {
       // Erreur réseau (hors-ligne, requête bloquée, etc.) → repli sur la session en cache
@@ -1128,51 +1202,60 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg, isOnli
   const [useBLE, setUseBLE] = useState(true);
   const [ticketFormat, setTicketFormat] = useState(() => localStorage.getItem("pos_ticket_fmt") || "80mm");
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const [caisseView, setCaisseView] = useState("catalog");
   const [shopLogo, setShopLogo] = useState(session.shopLogo || null);
 
   useEffect(() => { const unsub = syncShopData(session.shopId, setProducts, setSales, setStockMovements, setCredits, setCaissiers); return unsub; }, [session.shopId]);
 
   const total = items.reduce((s,i)=>s + (i.amount || 0) * (i.qty || 1), 0);
   
-  const updateStock = async (productId, quantity, type, reason) => {
-    const product = products.find(p => p.id === productId);
+  // Helper : mise à jour fonctionnelle + persistance locale immédiate (évite les états périmés)
+  const mutate = (type, setter, fn) => setter(prev => { const next = fn(prev); OfflineStore.set(session.shopId, type, next); return next; });
+  const productsRef = useRef(products);
+  useEffect(() => { productsRef.current = products; }, [products]);
+
+  // FIX hors-ligne : n'attend plus Firestore (une promesse d'écriture ne se résout qu'une fois le serveur
+  // joignable → la vente restait bloquée hors-ligne). Écritures en file d'attente + incrément atomique.
+  const updateStock = (productId, quantity, type, reason) => {
+    const product = productsRef.current.find(p => p.id === productId);
     if (!product) return;
     if (product.stock === null || product.stock === undefined || product.stock === -1) return;
-    const newStock = Math.max(0, (product.stock || 0) + quantity);
-    const updatedProducts = products.map(p => p.id === productId ? { ...p, stock: newStock } : p);
-    setProducts(updatedProducts);
-    OfflineStore.set(session.shopId, "products", updatedProducts);
+    const before = product.stock || 0;
+    const newStock = Math.max(0, before + quantity);
+    const applied = newStock - before;
+    productsRef.current = productsRef.current.map(p => p.id === productId ? { ...p, stock: newStock } : p);
+    mutate("products", setProducts, prev => prev.map(p => p.id === productId ? { ...p, stock: newStock } : p));
     const movement = { id: Date.now().toString(36)+Math.random().toString(36).slice(2), productId, productName: product.name, quantity, type, reason, timestamp: Date.now() };
-    setStockMovements([movement, ...stockMovements]);
-    OfflineStore.set(session.shopId, "stock_movements", [movement, ...stockMovements]);
-    if(db) {
-      await db.collection("shops").doc(session.shopId).collection("products").doc(productId).update({ stock: newStock });
-      await db.collection("shops").doc(session.shopId).collection("stock_movements").doc(movement.id).set(movement);
+    mutate("stock_movements", setStockMovements, prev => [movement, ...prev]);
+    if (db) {
+      const shopRef = db.collection("shops").doc(session.shopId);
+      if (applied !== 0) shopRef.collection("products").doc(productId).update({ stock: firebase.firestore.FieldValue.increment(applied) }).catch(()=>{});
+      shopRef.collection("stock_movements").doc(movement.id).set(movement).catch(()=>{});
     }
   };
 
-  const addSale = async (saleItems, saleTotal, print=true) => {
+  const addSale = async (saleItems, saleTotal, print=true, payment=null) => {
     for (const item of saleItems) {
       const product = products.find(p => p.id === item.productId);
       if (product && product.stock !== null && product.stock !== undefined && product.stock !== -1) {
         await updateStock(item.productId, - (item.qty || 1), "sortie", `Vente #${Date.now()}`);
       }
     }
-    const newSale = { id: Date.now().toString(36)+Math.random().toString(36).slice(2), date: new Date().toISOString().slice(0,10), timestamp: Date.now(), items: saleItems, total: saleTotal, invoiceNum: Date.now(), cancelled: false, caissier: currentCaissier?.name || null };
+    const newSale = { id: Date.now().toString(36)+Math.random().toString(36).slice(2), date: new Date().toISOString().slice(0,10), timestamp: Date.now(), items: saleItems, total: saleTotal, invoiceNum: Date.now(), cancelled: false, caissier: currentCaissier?.name || null, payment: payment || null };
     setSales([...sales, newSale]);
     OfflineStore.set(session.shopId, "sales", [...sales, newSale]);
     if(db) db.collection("shops").doc(session.shopId).collection("sales").doc(newSale.id).set(newSale).catch(()=>{});
     if(print) {
       try {
         if (useBLE && printer.connected) {
-          await printViaBLE(session.shopName, session.shopPhone, saleItems, saleTotal, newSale.invoiceNum, ticketFormat, shopLogo);
+          await printViaBLE(session.shopName, session.shopPhone, saleItems, saleTotal, newSale.invoiceNum, ticketFormat, shopLogo, payment);
           flashMsg(`✅ Vente + impression BLE ${ticketFormat}`);
         } else {
-          printFallback(session.shopName, session.shopPhone, saleItems, saleTotal, newSale.invoiceNum, ticketFormat, shopLogo);
+          printFallback(session.shopName, session.shopPhone, saleItems, saleTotal, newSale.invoiceNum, ticketFormat, shopLogo, payment);
           flashMsg("✅ Vente + impression navigateur");
         }
       } catch(e) {
-        printFallback(session.shopName, session.shopPhone, saleItems, saleTotal, newSale.invoiceNum, ticketFormat, shopLogo);
+        printFallback(session.shopName, session.shopPhone, saleItems, saleTotal, newSale.invoiceNum, ticketFormat, shopLogo, payment);
         flashMsg("✅ Vente (fallback)");
       }
     } else {
@@ -1346,7 +1429,7 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg, isOnli
               <button onClick={()=>{ setUseBLE(true); const f="57mm"; setTicketFormat(f); localStorage.setItem("pos_ticket_fmt",f); }} style={{flex:"1 0 auto", background:useBLE&&ticketFormat==="57mm"?T.accent:T.surface, borderRadius:12, padding:6, fontSize:11, fontWeight:600, color:useBLE&&ticketFormat==="57mm"?T.bg:T.text}}>🖨️ BLE 57mm</button>
               <button onClick={()=>setUseBLE(false)} style={{flex:"1 0 auto", background:!useBLE?T.accent:T.surface, borderRadius:12, padding:6, fontSize:11, fontWeight:600, color:!useBLE?T.bg:T.text}}>🖥️ Navigateur</button>
             </div>
-            <CaisseContent T={T} products={products} addSale={addSale} items={items} setItems={setItems} total={total} flashMsg={flashMsg} sales={sales} cancelSale={cancelSale} />
+            <CaisseContent T={T} products={products} addSale={addSale} items={items} setItems={setItems} total={total} flashMsg={flashMsg} sales={sales} cancelSale={cancelSale} isOnline={isOnline && !session._offline} syncedAt={OfflineStore.syncedAt(session.shopId, "products")} printLabel={useBLE ? `🖨️ Valider + ticket (BLE ${ticketFormat})` : "🖨️ Valider + imprimer"} onViewChange={setCaisseView} />
             {/* Spacer so FAB doesn't cover last product card */}
             <div style={{height:80}} />
           </div>
@@ -1357,6 +1440,7 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg, isOnli
           </div>
 
           {/* ── FAB panier mobile/tablette ── */}
+          {(caisseView === "catalog" || caisseView === "manual") && (
           <button
             className="mobile-cart-fab"
             onClick={()=>setMobileCartOpen(true)}
@@ -1376,6 +1460,7 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg, isOnli
               </span>
             )}
           </button>
+          )}
 
           {/* ── Bottom-sheet panier mobile/tablette ── */}
           {mobileCartOpen && (
@@ -1404,7 +1489,7 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg, isOnli
                 <div style={{flex:1, overflow:"hidden", display:"flex", flexDirection:"column"}}>
                   <PanierContent
                     T={T} items={items} setItems={setItems} total={total}
-                    addSale={(itms, tot, print) => { addSale(itms, tot, print); setMobileCartOpen(false); }}
+                    addSale={(itms, tot, print, payment) => { addSale(itms, tot, print, payment); setMobileCartOpen(false); }}
                     addCredit={(itms,tot,name) => { addCredit(itms,tot,name); setMobileCartOpen(false); }}
                     flashMsg={flashMsg} useBLE={useBLE} ticketFormat={ticketFormat}
                   />
@@ -1430,7 +1515,157 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg, isOnli
   );
 }
 
-function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg, sales, cancelSale }) {
+// ══════════════════════════════════════════════════════════════════
+//  ENCAISSEMENT : espèces (montant reçu + monnaie) / Orange Money / Moov Money
+// ══════════════════════════════════════════════════════════════════
+function PaymentModal({ T, total, printLabel, onClose, onConfirm }) {
+  const [method, setMethod] = useState(() => { try { const m = localStorage.getItem("pos_last_pay"); return PAY_METHODS[m] ? m : "cash"; } catch(e){ return "cash"; } });
+  const [recu, setRecu] = useState("");
+  const [ref, setRef] = useState("");
+  const [phone, setPhone] = useState("");
+  const pm = PAY_METHODS[method];
+  const isCash = method === "cash";
+  const recuNum = recu ? parseInt(recu, 10) : 0;
+  const received = isCash && recu ? recuNum : total;      // champ vide = montant exact
+  const change = received - total;
+  const ok = !isCash || received >= total;
+  const suggestions = useMemo(() => {
+    const set = new Set();
+    [500, 1000, 5000, 10000].forEach(st => { const v = Math.ceil(total / st) * st; if (v > total) set.add(v); });
+    [1000, 2000, 5000, 10000, 20000].forEach(b => { if (b > total) set.add(b); });
+    return Array.from(set).sort((a, b) => a - b).slice(0, 5);
+  }, [total]);
+  useEffect(() => { const h = (e) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, []);
+  const push = (d) => setRecu(p => { if (p.length >= 8) return p; if (p === "" && (d === "0" || d === "00")) return p; return p + d; });
+  const submit = (print) => {
+    if (!ok) return;
+    try { localStorage.setItem("pos_last_pay", method); } catch(e){}
+    onConfirm({ method, received, change: isCash ? Math.max(0, change) : 0, ref: ref.trim() || null, phone: phone.trim() || null }, print);
+  };
+  const keyStyle = { background: T.surface2, border: `1px solid ${T.border}`, color: T.text };
+  return (
+    <div className="pay-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="pay-sheet" role="dialog" aria-modal="true" aria-label="Encaissement" style={{ background: T.surface, color: T.text }}>
+        <div style={{ padding: "14px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 11, color: T.textMute, fontWeight: 700, letterSpacing: ".5px" }}>TOTAL À ENCAISSER</div>
+            <div style={{ fontSize: 34, fontWeight: 800, color: T.accent, lineHeight: 1.1 }}>{fmtPrice(total)}</div>
+          </div>
+          <button onClick={onClose} aria-label="Fermer" style={{ background: T.surface2, border: "none", borderRadius: 20, width: 38, height: 38, fontSize: 16, color: T.text }}>✕</button>
+        </div>
+        <div className="pay-body">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 12 }}>
+            {Object.values(PAY_METHODS).map(m => {
+              const on = method === m.id;
+              return (
+                <button key={m.id} onClick={() => setMethod(m.id)} aria-pressed={on}
+                  style={{ minHeight: 58, borderRadius: 14, border: `2px solid ${on ? m.color : T.border}`, background: on ? m.color : T.surface2, color: on ? "#fff" : T.text, fontWeight: 700, fontSize: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                  <span style={{ fontSize: 20 }}>{m.icon}</span>{m.short}
+                </button>
+              );
+            })}
+          </div>
+
+          {isCash ? (
+            <div className="pay-cash">
+              <div>
+                <div style={{ background: T.surface2, border: `2px solid ${recu ? T.blue : T.border}`, borderRadius: 14, padding: "10px 14px", marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: T.textMute }}>Montant reçu {recu ? "" : "(vide = montant exact)"}</div>
+                  <div style={{ fontSize: 30, fontWeight: 800, color: recu ? T.blue : T.textMute }}>{recu ? fmtPrice(recuNum) : "—"}</div>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                  <button onClick={() => setRecu("")} style={{ ...keyStyle, borderRadius: 20, padding: "8px 14px", fontSize: 12, fontWeight: 700, minHeight: 38 }}>Exact</button>
+                  {suggestions.map(v => (
+                    <button key={v} onClick={() => setRecu(String(v))} style={{ ...keyStyle, borderRadius: 20, padding: "8px 14px", fontSize: 12, fontWeight: 700, minHeight: 38, borderColor: recuNum === v ? T.blue : T.border }}>{fmtPrice(v)}</button>
+                  ))}
+                </div>
+                <div style={{ background: ok ? T.btnGreen.bg : T.btnRed.bg, borderRadius: 14, padding: 12, textAlign: "center" }}>
+                  <div style={{ fontSize: 11, color: T.textSub }}>{ok ? (change > 0 ? "Monnaie à rendre" : "Montant exact") : "Il manque"}</div>
+                  <div style={{ fontSize: 30, fontWeight: 800, color: ok ? T.green : T.red }}>{ok ? fmtPrice(Math.max(0, change)) : fmtPrice(total - received)}</div>
+                </div>
+              </div>
+              <div className="keypad" style={{ marginTop: 2 }}>
+                {[7, 8, 9, 4, 5, 6, 1, 2, 3].map(d => <button key={d} onClick={() => push(String(d))} style={keyStyle}>{d}</button>)}
+                <button onClick={() => push("00")} style={{ ...keyStyle, fontSize: 18 }}>00</button>
+                <button onClick={() => push("0")} style={keyStyle}>0</button>
+                <button onClick={() => setRecu(p => p.slice(0, -1))} aria-label="Effacer" style={{ background: T.btnRed.bg, border: `1px solid ${T.red}44`, color: T.red }}>⌫</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ background: pm.color + "1A", border: `1px solid ${pm.color}66`, borderRadius: 14, padding: 14 }}>
+              <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 6 }}>{pm.icon} Paiement {pm.label}</div>
+              <div style={{ fontSize: 12, color: T.textSub, lineHeight: 1.5, marginBottom: 12 }}>
+                1. Le client envoie <strong style={{ color: T.text }}>{fmtPrice(total)}</strong> sur votre numéro marchand.<br />
+                2. Vérifiez le SMS de confirmation reçu.<br />
+                3. Saisissez la référence de la transaction, puis validez.
+              </div>
+              <input value={ref} onChange={e => setRef(e.target.value)} placeholder="Référence / ID de transaction (recommandé)" autoCapitalize="characters"
+                style={{ width: "100%", background: T.inputBg, border: `1px solid ${T.inputBd}`, borderRadius: 12, padding: 12, color: T.text, fontSize: 14, marginBottom: 8 }} />
+              <input value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d+ ]/g, ""))} placeholder="N° du client (optionnel)" inputMode="tel"
+                style={{ width: "100%", background: T.inputBg, border: `1px solid ${T.inputBd}`, borderRadius: 12, padding: 12, color: T.text, fontSize: 14 }} />
+            </div>
+          )}
+        </div>
+        <div className="pay-foot" style={{ borderTop: `1px solid ${T.border}`, background: T.surface }}>
+          <button onClick={() => submit(true)} disabled={!ok}
+            style={{ minHeight: 50, borderRadius: 14, border: "none", fontWeight: 800, fontSize: 14, background: ok ? (isCash ? T.green : pm.color) : T.surface2, color: ok ? (isCash ? T.bg : "#fff") : T.textMute }}>
+            {isCash ? "" : "✅ Paiement reçu — "}{printLabel || "🖨️ Valider + ticket"}
+          </button>
+          <button onClick={() => submit(false)} disabled={!ok}
+            style={{ minHeight: 44, borderRadius: 14, border: `1px solid ${T.border}`, fontWeight: 700, fontSize: 13, background: "transparent", color: ok ? T.text : T.textMute }}>
+            ✅ Valider sans ticket
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  TUILE PRODUIT (catalogue en mosaïque)
+// ══════════════════════════════════════════════════════════════════
+function ProductTile({ T, p, qty, layout, onAdd, onRemove }) {
+  const unlimited = p.stock === undefined || p.stock === null || p.stock === -1;
+  const out = !unlimited && p.stock <= 0;
+  const low = !unlimited && p.stock > 0 && p.stock <= 5;
+  const hue = hashHue(p.category || p.name);
+  const dark = T.mode === "dark";
+  const visualBg = dark
+    ? `linear-gradient(145deg, hsl(${hue} 42% 24%), hsl(${(hue+35)%360} 48% 13%))`
+    : `linear-gradient(145deg, hsl(${hue} 85% 91%), hsl(${(hue+35)%360} 80% 80%))`;
+  const fg = dark ? `hsl(${hue} 70% 82%)` : `hsl(${hue} 55% 28%)`;
+  const dense = layout === "dense", list = layout === "list";
+  const badge = out ? { t: "Rupture", c: T.red } : low ? { t: `Reste ${p.stock}`, c: T.orange } : null;
+  const press = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAdd(p); } };
+  return (
+    <div className="tile pos-card" role="button" tabIndex={0} aria-label={`${p.name}, ${fmtPrice(p.price)}${out ? ", en rupture" : ""}`}
+      onClick={() => onAdd(p)} onKeyDown={press}
+      style={{ background: T.surface, border: `1.5px solid ${qty > 0 ? T.accent : T.border}`, opacity: out ? 0.55 : 1, color: T.text }}>
+      <div className="tile-visual" style={{ background: p.image ? T.surface2 : visualBg }}>
+        {p.image
+          ? <img src={p.image} alt="" loading="lazy" draggable="false" />
+          : <span style={{ fontFamily: "'Outfit'", fontWeight: 800, fontSize: list ? 20 : dense ? 26 : 34, color: fg, letterSpacing: 1 }}>{initials(p.name)}</span>}
+        {badge && !list && <span className="tile-chip" style={{ left: 6, bottom: 6, background: badge.c, color: "#fff" }}>{badge.t}</span>}
+        {qty > 0 && <span className="tile-qty" style={{ background: T.accent, color: T.bg }}>{qty}</span>}
+      </div>
+      <div className="tile-body">
+        <div className="tile-name" style={{ fontWeight: 600, fontSize: dense ? 12 : 13 }}>{p.name}</div>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
+          <span className="tile-price" style={{ color: T.accent, fontSize: dense ? 13 : 14 }}>{fmtPrice(p.price)}</span>
+          {list && badge && <span style={{ fontSize: 10, fontWeight: 800, color: badge.c }}>{badge.t}</span>}
+        </div>
+        {!dense && p.category && <div className="tile-cat" style={{ color: T.textSub }}>{p.category}</div>}
+      </div>
+      {qty > 0 && (
+        <button className="tile-minus" aria-label={`Retirer un ${p.name}`}
+          onClick={(e) => { e.stopPropagation(); onRemove(p); }}
+          style={{ background: T.btnRed.bg, color: T.red }}>−</button>
+      )}
+    </div>
+  );
+}
+
+function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg, sales, cancelSale, isOnline = true, syncedAt = null, printLabel, onViewChange }) {
   const [view, setView] = useState("catalog");
   const [search, setSearch] = useState("");
   const [activeCat, setActiveCat] = useState("Tous");
@@ -1441,25 +1676,58 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
   const [scannerActive, setScannerActive] = useState(false);
   const videoRef = React.useRef(null);
   const scannerRef = React.useRef(null);
+  const [layout, setLayout] = useState(() => { try { return localStorage.getItem("pos_catalog_layout") || "grid"; } catch(e){ return "grid"; } });
+  useEffect(() => { onViewChange && onViewChange(view); }, [view]);
+  const changeLayout = (k) => { setLayout(k); try { localStorage.setItem("pos_catalog_layout", k); } catch(e){} };
   
   const allProds = (products || []).filter(p => p && p.active !== false && p.name);
-  const categories = ["Tous", ...Array.from(new Set(allProds.map(p=>p.category).filter(Boolean)))];
+  const catCount = {};
+  allProds.forEach(p => { if (p.category) catCount[p.category] = (catCount[p.category] || 0) + 1; });
+  const cats = Object.keys(catCount).sort((a,b)=>a.localeCompare(b,"fr"));
+  // « Top » = articles les plus vendus (hors ventes annulées)
+  const topIds = useMemo(() => {
+    const m = {};
+    (sales || []).forEach(sl => { if (sl.cancelled) return; (sl.items || []).forEach(i => { if (i.productId) m[i.productId] = (m[i.productId] || 0) + (i.qty || 1); }); });
+    return Object.entries(m).sort((a,b) => b[1] - a[1]).slice(0, 12).map(e => e[0]);
+  }, [sales]);
+  const qtyMap = useMemo(() => { const m = {}; items.forEach(i => { if (i.productId) m[i.productId] = (m[i.productId] || 0) + (i.qty || 1); }); return m; }, [items]);
+  const q = norm(search);
+  const isOut = (p) => p.stock !== undefined && p.stock !== null && p.stock !== -1 && p.stock <= 0;
   const filtered = allProds.filter(p => {
-    const matchCat = activeCat === "Tous" || p.category === activeCat;
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase());
+    const matchCat = activeCat === "Tous" || (activeCat === "__top__" ? topIds.includes(p.id) : p.category === activeCat);
+    const matchSearch = !q || norm(p.name).includes(q) || norm(p.category).includes(q) || norm(p.barcode).includes(q);
     return matchCat && matchSearch;
+  }).sort((a, b) => {
+    if (activeCat === "__top__") return topIds.indexOf(a.id) - topIds.indexOf(b.id);
+    return (isOut(a) - isOut(b)) || a.name.localeCompare(b.name, "fr"); // ruptures en dernier
   });
   const todaySalesAll = (sales || []).filter(s => s.date === new Date().toISOString().slice(0,10));
   const todaySales = todaySalesAll.filter(s => !s.cancelled);
   
   const addProduct = (p) => {
-    if (p.stock !== undefined && p.stock !== null && p.stock !== -1 && p.stock <= 0) { flashMsg(`⚠️ ${p.name} en rupture`); return; }
+    const limited = p.stock !== undefined && p.stock !== null && p.stock !== -1;
+    if (limited && p.stock <= 0) { flashMsg(`⚠️ ${p.name} en rupture`); return; }
     const exist = items.find(i=>i.productId===p.id);
+    if (limited && exist && (exist.qty||1) >= p.stock) { flashMsg(`⚠️ Stock max atteint (${p.stock}) : ${p.name}`); return; }
     if(exist) setItems(items.map(i=>i.productId===p.id?{...i, qty:(i.qty||1)+1}:i));
     else setItems([...items, {id:Date.now()+Math.random(), productId:p.id, label:p.name, amount:p.price, qty:1}]);
+    try { navigator.vibrate && navigator.vibrate(12); } catch(e){}
     flashMsg(`➕ ${p.name}`);
   };
-  
+  const removeOne = (p) => {
+    const ex = items.find(i=>i.productId===p.id);
+    if (!ex) return;
+    if ((ex.qty||1) <= 1) setItems(items.filter(i=>i.productId!==p.id));
+    else setItems(items.map(i=>i.productId===p.id?{...i, qty:i.qty-1}:i));
+  };
+  // Douchette USB/Bluetooth (clavier virtuel) : « Entrée » ajoute l'article scanné ou l'unique résultat
+  const onSearchKey = (e) => {
+    if (e.key !== "Enter") return;
+    const code = search.trim(); if (!code) return;
+    const hit = allProds.find(p => p.barcode && String(p.barcode) === code) || (filtered.length === 1 ? filtered[0] : null);
+    if (hit) { addProduct(hit); setSearch(""); }
+  };
+
   const addManual = () => { if(!manualLabel.trim() || !manualAmount) { flashMsg("Nom et montant requis"); return; } setItems([...items, {id:Date.now()+Math.random(), label:manualLabel.trim(), amount:parseInt(manualAmount), qty:1}]); setManualLabel(""); setManualAmount(""); };
 
   const startScanner = async () => {
@@ -1495,46 +1763,74 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
   
   return (
     <div style={{display:"flex", flexDirection:"column", height:"100%", overflow:"hidden"}}>
-      <div style={{display:"flex", gap:6, marginBottom:12, overflowX:"auto", paddingBottom:2, flexShrink:0}}>
-        <button onClick={()=>setView("catalog")} style={{flex:"1 0 auto", background:view==="catalog"?T.accent:T.surface, borderRadius:12, padding:"8px 10px", fontWeight:600, fontSize:12, color:view==="catalog"?T.bg:T.text}}>📦 Catalogue</button>
-        <button onClick={()=>setView("manual")} style={{flex:"1 0 auto", background:view==="manual"?T.accent:T.surface, borderRadius:12, padding:"8px 10px", fontWeight:600, fontSize:12, color:view==="manual"?T.bg:T.text}}>✏️ Manuel</button>
-        <button onClick={()=>setView("rapide")} style={{flex:"1 0 auto", background:view==="rapide"?T.accent:T.surface, borderRadius:12, padding:"8px 10px", fontWeight:600, fontSize:12, color:view==="rapide"?T.bg:T.text}}>⚡ Rapide</button>
-        <button onClick={()=>setView("annulations")} style={{flex:"1 0 auto", background:view==="annulations"?T.red:T.surface, borderRadius:12, padding:"8px 10px", fontWeight:600, fontSize:12, color:view==="annulations"?T.bg:T.text}}>🗑️ Annul.</button>
+      <div className="chips" style={{marginBottom:6, flexShrink:0}}>
+        {[["catalog","📦","Catalogue"],["manual","✏️","Manuel"],["rapide","⚡","Rapide"],["annulations","🗑️","Annul."]].map(([k,ic,lb])=>{
+          const on = view===k, danger = k==="annulations";
+          return <button key={k} onClick={()=>setView(k)} style={{flex:"1 0 auto", minHeight:40, background:on?(danger?T.red:T.accent):T.surface, border:`1px solid ${on?"transparent":T.border}`, borderRadius:12, padding:"8px 12px", fontWeight:700, fontSize:12, color:on?(danger?"#fff":T.bg):T.text}}>{ic} {lb}</button>;
+        })}
       </div>
-      
+
       {view === "catalog" && (
         <>
-          <div style={{display:"flex", gap:6, marginBottom:8}}>
-            <input placeholder="🔍 Rechercher..." value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1, background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:12, padding:10, color:T.text}} />
-            <button onClick={scannerActive ? stopScanner : startScanner} style={{background:scannerActive?T.red:T.surface, border:"none", borderRadius:12, padding:"0 12px", fontSize:18}} title="Scanner code-barres">{scannerActive?"⏹️":"📷"}</button>
+          <div className="catalog-bar" style={{background:T.bg}}>
+            <div style={{display:"flex", gap:6, marginBottom:8}}>
+              <div style={{flex:1, position:"relative", minWidth:0}}>
+                <input type="text" inputMode="search" enterKeyHint="search" placeholder="🔍 Nom, catégorie ou code-barres…" value={search}
+                  onChange={e=>setSearch(e.target.value)} onKeyDown={onSearchKey}
+                  style={{width:"100%", background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:12, padding:"11px 34px 11px 12px", color:T.text, fontSize:14}} />
+                {search && <button onClick={()=>setSearch("")} aria-label="Effacer la recherche" style={{position:"absolute", right:4, top:0, bottom:0, margin:"auto 0", height:30, width:30, background:"transparent", border:"none", color:T.textMute, fontSize:15}}>✕</button>}
+              </div>
+              <button onClick={scannerActive ? stopScanner : startScanner} title="Scanner code-barres" aria-label="Scanner un code-barres" style={{background:scannerActive?T.red:T.surface, border:`1px solid ${T.border}`, borderRadius:12, width:44, fontSize:18}}>{scannerActive?"⏹️":"📷"}</button>
+              <div role="group" aria-label="Affichage du catalogue" style={{display:"flex", background:T.surface2, borderRadius:12, padding:3, gap:2}}>
+                {[["grid","▦","Mosaïque"],["dense","▪▪","Compact"],["list","☰","Liste"]].map(([k,ic,lb])=>(
+                  <button key={k} onClick={()=>changeLayout(k)} title={lb} aria-label={lb} aria-pressed={layout===k}
+                    style={{background:layout===k?T.accent:"transparent", color:layout===k?T.bg:T.textSub, border:"none", borderRadius:9, width:32, fontSize:13, fontWeight:800}}>{ic}</button>
+                ))}
+              </div>
+            </div>
+            {scannerActive && (
+              <div style={{marginBottom:10, borderRadius:12, overflow:"hidden", position:"relative"}}>
+                <video ref={videoRef} playsInline muted style={{width:"100%", maxHeight:160, objectFit:"cover", display:"block"}} />
+                <div style={{position:"absolute", inset:0, border:"2px solid "+T.accent, borderRadius:12, pointerEvents:"none"}} />
+                <div style={{position:"absolute", bottom:6, left:0, right:0, textAlign:"center", fontSize:10, color:"white", textShadow:"0 1px 3px #000"}}>Pointez vers un code-barres</div>
+              </div>
+            )}
+            {(cats.length > 0 || topIds.length > 0) && (
+              <div className="chips">
+                {[{k:"Tous", l:`Tous · ${allProds.length}`}, ...(topIds.length ? [{k:"__top__", l:"⭐ Top ventes"}] : []), ...cats.map(c=>({k:c, l:`${c} · ${catCount[c]}`}))].map(c=>(
+                  <button key={c.k} onClick={()=>setActiveCat(c.k)} aria-pressed={activeCat===c.k}
+                    style={{flex:"0 0 auto", minHeight:32, background:activeCat===c.k?T.accent:T.surface2, border:"none", borderRadius:20, padding:"4px 13px", fontSize:11, fontWeight:700, color:activeCat===c.k?T.bg:T.text, whiteSpace:"nowrap"}}>{c.l}</button>
+                ))}
+              </div>
+            )}
           </div>
-          {scannerActive && (
-            <div style={{marginBottom:10, borderRadius:12, overflow:"hidden", position:"relative"}}>
-              <video ref={videoRef} style={{width:"100%", maxHeight:160, objectFit:"cover", display:"block"}} />
-              <div style={{position:"absolute", inset:0, border:"2px solid "+T.accent, borderRadius:12, pointerEvents:"none"}} />
-              <div style={{position:"absolute", bottom:6, left:0, right:0, textAlign:"center", fontSize:10, color:"white", textShadow:"0 1px 3px #000"}}>Pointez vers un code-barres</div>
+
+          {!isOnline && (
+            <div className="offline-chip" style={{background:T.orange+"22", color:T.orange, border:`1px solid ${T.orange}44`}}>
+              📴 Catalogue hors-ligne · {allProds.length} article{allProds.length>1?"s":""} disponible{allProds.length>1?"s":""}{syncedAt ? ` · synchronisé ${timeAgo(syncedAt)}` : ""}
             </div>
           )}
-          {categories.length > 1 && (
-            <div style={{display:"flex", gap:6, overflowX:"auto", paddingBottom:6, marginBottom:8}}>
-              {categories.map(cat=>(
-                <button key={cat} onClick={()=>setActiveCat(cat)} style={{flex:"0 0 auto", background:activeCat===cat?T.accent:T.surface2, borderRadius:20, padding:"4px 12px", fontSize:11, fontWeight:600, color:activeCat===cat?T.bg:T.text, whiteSpace:"nowrap"}}>{cat}</button>
-              ))}
+
+          {allProds.length === 0 ? (
+            <div style={{textAlign:"center", padding:"48px 16px", color:T.textMute}}>
+              <div style={{fontSize:40, marginBottom:8}}>📦</div>
+              <div style={{fontSize:14, fontWeight:700, color:T.textSub, marginBottom:4}}>Catalogue vide</div>
+              <div style={{fontSize:12}}>{isOnline ? "Ajoutez vos articles via Admin → Produits." : "Aucun article enregistré sur cet appareil. Connectez-vous une première fois au réseau pour le télécharger."}</div>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{textAlign:"center", padding:"40px 16px", color:T.textMute}}>
+              <div style={{fontSize:34, marginBottom:6}}>🔎</div>
+              <div style={{fontSize:13, color:T.textSub, marginBottom:10}}>Aucun article{search ? ` pour « ${search} »` : " dans cette catégorie"}</div>
+              <button onClick={()=>{setSearch(""); setActiveCat("Tous");}} style={{background:T.surface2, border:"none", borderRadius:20, padding:"8px 16px", fontSize:12, fontWeight:700, color:T.text}}>Réinitialiser les filtres</button>
+            </div>
+          ) : (
+            <div className={"mosaic" + (layout==="dense" ? " dense" : layout==="list" ? " list" : "")}>
+              {filtered.map(p => <ProductTile key={p.id} T={T} p={p} qty={qtyMap[p.id]||0} layout={layout} onAdd={addProduct} onRemove={removeOne} />)}
             </div>
           )}
-          <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:8, overflowY:"auto", maxHeight:"calc(100vh - 280px)", paddingBottom:8}}>
-            {filtered.map(p => (
-              <button key={p.id} onClick={()=>addProduct(p)} style={{background:T.surface, border:`1px solid ${T.border}`, borderRadius:12, padding:10, textAlign:"left", minWidth:0}}>
-                <div style={{fontWeight:600, fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p.name}</div>
-                <div style={{fontSize:12, color:T.accent, fontWeight:700}}>{fmtPrice(p.price)}</div>
-                {p.category && <div style={{fontSize:9, color:T.textMute, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{p.category}</div>}
-                {p.stock !== undefined && p.stock !== null && p.stock !== -1 && <div style={{fontSize:9, color:p.stock<=5?T.red:T.textMute}}>Stock: {p.stock}</div>}
-              </button>
-            ))}
-          </div>
         </>
       )}
-      
+
       {view === "manual" && (
         <div style={{background:T.surface, borderRadius:16, padding:16}}>
           <input placeholder="Nom article" value={manualLabel} onChange={e=>setManualLabel(e.target.value)} style={{width:"100%", background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:12, padding:10, marginBottom:8, color:T.text}} />
@@ -1543,7 +1839,7 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
         </div>
       )}
       
-      {view === "rapide" && <VenteRapide T={T} addSale={addSale} flashMsg={flashMsg} />}
+      {view === "rapide" && <VenteRapide T={T} addSale={addSale} flashMsg={flashMsg} printLabel={printLabel} />}
       
       {view === "annulations" && (() => {
         const ventesActives = todaySalesAll.filter(s => !s.cancelled);
@@ -1562,6 +1858,7 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
                     </span>
                   </div>
                   {s.caissier && <div style={{fontSize:10, color:T.textMute, marginTop:2}}>👤 {s.caissier}</div>}
+                  {s.payment && PAY_METHODS[s.payment.method] && <div style={{fontSize:10, fontWeight:700, color:PAY_METHODS[s.payment.method].color, marginTop:2}}>{PAY_METHODS[s.payment.method].icon} {PAY_METHODS[s.payment.method].label}{s.payment.method==="cash" && s.payment.change>0 ? ` · rendu ${fmtPrice(s.payment.change)}` : ""}{s.payment.ref ? ` · réf ${s.payment.ref}` : ""}</div>}
                 </div>
                 <div style={{textAlign:"right"}}>
                   <div style={{fontSize:18, fontWeight:800, color:annulable?T.accent:T.textMute}}>{fmtPrice(s.total)}</div>
@@ -1593,6 +1890,22 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
         };
         return (
           <div style={{overflowY:"auto", overflowX:"hidden", flex:1, WebkitOverflowScrolling:"touch", paddingBottom:24}}>
+            {ventesActives.length>0 && (() => {
+              const by = {}; ventesActives.forEach(sl => { const m = (sl.payment && sl.payment.method) || "cash"; by[m] = (by[m]||0) + (sl.total||0); });
+              return (
+                <div style={{background:T.surface, border:`1px solid ${T.border}`, borderRadius:16, padding:12, marginBottom:12}}>
+                  <div style={{fontSize:11, fontWeight:700, color:T.textMute, marginBottom:8, letterSpacing:".5px"}}>ENCAISSÉ AUJOURD'HUI</div>
+                  <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))", gap:8}}>
+                    {Object.keys(PAY_METHODS).map(k => (
+                      <div key={k} style={{background:T.surface2, borderRadius:12, padding:"8px 10px", borderLeft:`4px solid ${PAY_METHODS[k].color}`, opacity:by[k]?1:.55}}>
+                        <div style={{fontSize:10, color:T.textSub}}>{PAY_METHODS[k].icon} {PAY_METHODS[k].short}{k==="cash" ? " (en caisse)" : ""}</div>
+                        <div style={{fontSize:16, fontWeight:800}}>{fmtPrice(by[k]||0)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             {ventesActives.length===0 && ventesAnnulees.length===0 && (
               <div style={{textAlign:"center", padding:50, color:T.textMute}}>
                 <div style={{fontSize:32, marginBottom:8}}>🧾</div>
@@ -1680,6 +1993,7 @@ function PanierContent({ T, items, setItems, total, addSale, addCredit, flashMsg
   const printLabel = useBLE ? `🖨️ BLE ${ticketFormat||"80mm"} + Valider` : "🖥️ Imprimer + Valider";
   const [creditModal, setCreditModal] = useState(false);
   const [clientName, setClientName] = useState("");
+  const [payModal, setPayModal] = useState(false);
   
   return (
     <>
@@ -1693,7 +2007,7 @@ function PanierContent({ T, items, setItems, total, addSale, addCredit, flashMsg
           <div key={it.id} style={{background:T.surface2, borderRadius:10, padding:8, marginBottom:6}}>
             <div style={{display:"flex", justifyContent:"space-between"}}><span style={{fontSize:13}}>{it.label}</span><span style={{fontWeight:700}}>{fmtPrice(it.amount*it.qty)}</span></div>
             <div style={{display:"flex", justifyContent:"space-between", marginTop:4}}>
-              <div><button onClick={()=>updateQty(it.id,-1)} style={{background:T.bg, border:"none", width:26, borderRadius:5}}>-</button> <span style={{fontSize:13, fontWeight:600}}>{it.qty}</span> <button onClick={()=>updateQty(it.id,1)} style={{background:T.bg, border:"none", width:26, borderRadius:5}}>+</button></div>
+              <div><button onClick={()=>updateQty(it.id,-1)} aria-label="Moins" style={{background:T.bg, color:T.text, border:`1px solid ${T.border}`, width:38, height:34, borderRadius:10, fontSize:18, fontWeight:700}}>−</button> <span style={{fontSize:14, fontWeight:700, display:"inline-block", minWidth:28, textAlign:"center"}}>{it.qty}</span> <button onClick={()=>updateQty(it.id,1)} aria-label="Plus" style={{background:T.bg, color:T.text, border:`1px solid ${T.border}`, width:38, height:34, borderRadius:10, fontSize:18, fontWeight:700}}>+</button></div>
               <button onClick={()=>removeItem(it.id)} style={{background:"transparent", border:"none", color:T.red}}>🗑️</button>
             </div>
           </div>
@@ -1701,10 +2015,13 @@ function PanierContent({ T, items, setItems, total, addSale, addCredit, flashMsg
       </div>
       <div style={{padding:12, borderTop:`1px solid ${T.border}`, flexShrink:0, background:T.surface}}>
         <div style={{display:"flex", justifyContent:"space-between", marginBottom:8, fontSize:18, fontWeight:800}}><span>TOTAL</span><span style={{color:T.accent}}>{fmtPrice(total)}</span></div>
-        <button onClick={()=>{ if(items.length) addSale(items, total, true); else flashMsg("Panier vide"); }} style={{width:"100%", background:T.green, border:"none", borderRadius:12, padding:12, fontWeight:700, color:T.bg, fontSize:13}}>{printLabel}</button>
-        <button onClick={()=>{ if(items.length) addSale(items, total, false); else flashMsg("Panier vide"); }} style={{marginTop:6, width:"100%", background:T.blue, border:"none", borderRadius:12, padding:11, fontWeight:700, color:T.bg}}>✅ Valider sans ticket</button>
+        <button onClick={()=>{ if(items.length) setPayModal(true); else flashMsg("Panier vide"); }} style={{width:"100%", minHeight:52, background:T.green, border:"none", borderRadius:14, padding:12, fontWeight:800, color:T.bg, fontSize:15}}>💰 Encaisser · {fmtPrice(total)}</button>
         <button onClick={()=>{ if(items.length) setCreditModal(true); else flashMsg("Panier vide"); }} style={{marginTop:6, width:"100%", background:T.orange||"#f59e0b", border:"none", borderRadius:12, padding:11, fontWeight:700, color:"#fff"}}>💳 Vendre à crédit</button>
       </div>
+      {payModal && (
+        <PaymentModal T={T} total={total} printLabel={printLabel} onClose={()=>setPayModal(false)}
+          onConfirm={(payment, print)=>{ setPayModal(false); addSale(items, total, print, payment); }} />
+      )}
       {creditModal && (
         <div style={{position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1200}}>
           <div style={{background:T.surface, borderRadius:24, padding:20, width:"90%", maxWidth:360}}>
@@ -2854,7 +3171,7 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
   const [editProd, setEditProd] = useState(null);
   const [pName, setPName] = useState(""); const [pPrice, setPPrice] = useState(""); const [pPrixAchat, setPPrixAchat] = useState("");
   const [pStock, setPStock] = useState(""); const [pStockUnlimited, setPStockUnlimited] = useState(false);
-  const [pCategory, setPCategory] = useState(""); const [pBarcode, setPBarcode] = useState("");
+  const [pCategory, setPCategory] = useState(""); const [pBarcode, setPBarcode] = useState(""); const [pImage, setPImage] = useState(null);
   const [showPinForm, setShowPinForm] = useState(false);
   const [newPin, setNewPin] = useState(""); const [newPinConfirm, setNewPinConfirm] = useState("");
   const [payModal, setPayModal] = useState(null); const [payAmount, setPayAmount] = useState("");
@@ -2883,6 +3200,13 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
     } catch(e) { flashMsg('❌ Erreur upload logo'); setLogoUploading(false); }
   };
 
+  const handleProdImage = (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = async (ev) => { try { setPImage(await resizeImageToJpeg(ev.target.result, 160, 0.72)); } catch(err) { flashMsg("❌ Image illisible"); } };
+    r.readAsDataURL(f); e.target.value = "";
+  };
+
   const handleLogoDelete = async () => {
     if (!confirm('Supprimer le logo ?')) return;
     if (db) await db.collection('shops').doc(shopId).update({ logoBase64: null });
@@ -2906,20 +3230,20 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
     const price = parseInt(pPrice); if(!price) { flashMsg("Prix invalide"); return; }
     const prixAchat = parseInt(pPrixAchat)||0; const stock = pStockUnlimited ? -1 : (parseInt(pStock)||0);
     if(editProd) {
-      const updated = products.map(p=>p.id===editProd.id?{...p, name:pName.trim(), price, prixAchat, stock, category:pCategory.trim()||null, barcode:pBarcode.trim()||null}:p);
+      const updated = products.map(p=>p.id===editProd.id?{...p, name:pName.trim(), price, prixAchat, stock, category:pCategory.trim()||null, barcode:pBarcode.trim()||null, image:pImage||null}:p);
       setProducts(updated); OfflineStore.set(shopId, "products", updated);
-      if(db_ref) db_ref.collection("shops").doc(shopId).collection("products").doc(editProd.id).update({name:pName.trim(), price, prixAchat, stock, category:pCategory.trim()||null, barcode:pBarcode.trim()||null});
+      if(db_ref) db_ref.collection("shops").doc(shopId).collection("products").doc(editProd.id).update({name:pName.trim(), price, prixAchat, stock, category:pCategory.trim()||null, barcode:pBarcode.trim()||null, image:pImage||null});
       flashMsg("Produit modifié");
     } else {
-      const newProd = { id: Date.now().toString(36)+Math.random().toString(36).slice(2), name:pName.trim(), price, prixAchat, stock, category:pCategory.trim()||null, barcode:pBarcode.trim()||null, active:true };
+      const newProd = { id: Date.now().toString(36)+Math.random().toString(36).slice(2), name:pName.trim(), price, prixAchat, stock, category:pCategory.trim()||null, barcode:pBarcode.trim()||null, image:pImage||null, active:true };
       setProducts([...products, newProd]); OfflineStore.set(shopId, "products", [...products, newProd]);
       if(db_ref) db_ref.collection("shops").doc(shopId).collection("products").doc(newProd.id).set(newProd);
       flashMsg("Produit ajouté");
     }
     setShowForm(false);
   };
-  const openEdit = (p) => { setEditProd(p); setPName(p.name); setPPrice(String(p.price)); setPPrixAchat(p.prixAchat?String(p.prixAchat):""); setPStock(p.stock===undefined||p.stock===null||p.stock===-1?"":String(p.stock)); setPStockUnlimited(p.stock===undefined||p.stock===null||p.stock===-1); setPCategory(p.category||""); setPBarcode(p.barcode||""); setShowForm(true); };
-  const openNew = () => { setEditProd(null); setPName(""); setPPrice(""); setPPrixAchat(""); setPStock(""); setPStockUnlimited(false); setPCategory(""); setPBarcode(""); setShowForm(true); };
+  const openEdit = (p) => { setEditProd(p); setPName(p.name); setPPrice(String(p.price)); setPPrixAchat(p.prixAchat?String(p.prixAchat):""); setPStock(p.stock===undefined||p.stock===null||p.stock===-1?"":String(p.stock)); setPStockUnlimited(p.stock===undefined||p.stock===null||p.stock===-1); setPCategory(p.category||""); setPBarcode(p.barcode||""); setPImage(p.image||null); setShowForm(true); };
+  const openNew = () => { setEditProd(null); setPName(""); setPPrice(""); setPPrixAchat(""); setPStock(""); setPStockUnlimited(false); setPCategory(""); setPBarcode(""); setPImage(null); setShowForm(true); };
   const deleteProd = (p) => { if(confirm(`Supprimer ${p.name} ?`)) { setProducts(products.filter(pr=>pr.id!==p.id)); OfflineStore.set(shopId, "products", products.filter(pr=>pr.id!==p.id)); if(db_ref) db_ref.collection("shops").doc(shopId).collection("products").doc(p.id).delete(); flashMsg("Produit supprimé"); } };
   const handlePinChange = () => { if(newPin.length!==4){flashMsg("4 chiffres requis");return;} if(newPin!==newPinConfirm){flashMsg("PIN différents");return;} updateAdminPin(newPin); setShowPinForm(false); setNewPin(""); setNewPinConfirm(""); };
 
@@ -3449,6 +3773,16 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
         <div style={{position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, overflowY:"auto", padding:"20px 0"}}>
           <div style={{background:T.surface, borderRadius:24, padding:20, width:"90%", maxWidth:380}}>
             <div style={{fontSize:18, fontWeight:800, marginBottom:12}}>{editProd?"Modifier":"Nouveau"} produit</div>
+            <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:10}}>
+              <div style={{width:64, height:64, borderRadius:14, overflow:"hidden", background:T.surface2, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, border:`1px solid ${T.border}`}}>
+                {pImage ? <img src={pImage} alt="" style={{width:"100%", height:"100%", objectFit:"cover"}} /> : <span style={{fontSize:24}}>🖼️</span>}
+              </div>
+              <label style={{flex:1, background:T.surface2, border:`1px dashed ${T.border}`, borderRadius:12, padding:"10px 12px", fontSize:12, fontWeight:600, textAlign:"center", cursor:"pointer"}}>
+                📷 {pImage ? "Changer la photo" : "Ajouter une photo (optionnel)"}
+                <input type="file" accept="image/*" onChange={handleProdImage} style={{display:"none"}} />
+              </label>
+              {pImage && <button onClick={()=>setPImage(null)} aria-label="Retirer la photo" style={{background:T.btnRed.bg, color:T.red, border:"none", borderRadius:10, width:36, height:36}}>✕</button>}
+            </div>
             <input placeholder="Nom" value={pName} onChange={e=>setPName(e.target.value)} style={{width:"100%", background:T.inputBg, borderRadius:12, padding:12, marginBottom:8, color:T.text}} />
             <input placeholder="Prix de vente (F)" value={pPrice} onChange={e=>setPPrice(e.target.value.replace(/\D/g,""))} style={{width:"100%", background:T.inputBg, borderRadius:12, padding:12, marginBottom:8, color:T.text}} />
             <input placeholder="Prix d'achat / coût (F) — optionnel" value={pPrixAchat} onChange={e=>setPPrixAchat(e.target.value.replace(/\D/g,""))} style={{width:"100%", background:T.inputBg, borderRadius:12, padding:12, marginBottom:8, color:T.text, border:`1px solid ${T.accent}55`}} />
