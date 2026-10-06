@@ -146,7 +146,7 @@ input:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px rgba(120,140,255,.4
 }
 /* ── Desktop (≥960px) ─────────────────────────────────────────── */
 @media (min-width: 960px) {
-  .desktop-grid     { display: flex; flex-direction: row; height: 100dvh; overflow: hidden; }
+  .desktop-grid     { display: flex; flex-direction: row; }
   .desktop-sidebar  { width: 360px; flex-shrink: 0; overflow: hidden; display: flex !important; flex-direction: column; }
   .desktop-main     { flex: 1; overflow-y: auto; min-width: 0; }
   .product-grid     { grid-template-columns: repeat(3, 1fr) !important; }
@@ -154,6 +154,11 @@ input:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px rgba(120,140,255,.4
   .mobile-cart-overlay { display: none !important; }
 }
 .mobile-cart-fab { display: none; }
+/* FIX défilement : avant, .desktop-grid n'était un conteneur flex qu'à partir de 960 px → sur téléphone/tablette
+   la zone n'avait pas de hauteur bornée et le catalogue était coupé sans pouvoir défiler. */
+.pos-header{flex-shrink:0}
+.desktop-grid{display:flex;flex-direction:row;flex:1;min-height:0;overflow:hidden}
+.desktop-main{flex:1 1 auto;min-height:0;min-width:0;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scroll-padding-top:120px}
 </style>
 </head>
 <body>
@@ -1411,7 +1416,7 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg, isOnli
       </div>
       
       {mode === "CAISSE" && (
-        <div className="desktop-grid" style={{flex:1, overflow:"hidden", position:"relative"}}>
+        <div style={{flex:1, minHeight:0, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative"}}>
           {/* caissier bar */}
           {caissiers.length > 0 && (
             <div style={{display:"flex", alignItems:"center", gap:8, padding:"4px 12px", background:T.surface2, borderBottom:`1px solid ${T.border}`, flexShrink:0}}>
@@ -1422,7 +1427,8 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg, isOnli
               }
             </div>
           )}
-          <div className="desktop-main" style={{flex:1, overflowY:"auto", padding:12}}>
+          <div className="desktop-grid" style={{flex:1, minHeight:0, position:"relative"}}>
+          <div className="desktop-main" style={{padding:12}}>
             <BLEStatus T={T} />
             <div style={{display:"flex", gap:6, marginBottom:8, flexWrap:"wrap"}}>
               <button onClick={()=>{ setUseBLE(true); const f="80mm"; setTicketFormat(f); localStorage.setItem("pos_ticket_fmt",f); }} style={{flex:"1 0 auto", background:useBLE&&ticketFormat==="80mm"?T.accent:T.surface, borderRadius:12, padding:6, fontSize:11, fontWeight:600, color:useBLE&&ticketFormat==="80mm"?T.bg:T.text}}>🖨️ BLE 80mm</button>
@@ -1497,6 +1503,7 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg, isOnli
               </div>
             </div>
           )}
+          </div>
         </div>
       )}
       
@@ -1762,7 +1769,7 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
   React.useEffect(() => () => stopScanner(), []);
   
   return (
-    <div style={{display:"flex", flexDirection:"column", height:"100%", overflow:"hidden"}}>
+    <div style={{display:"flex", flexDirection:"column", minHeight:"100%"}}>
       <div className="chips" style={{marginBottom:6, flexShrink:0}}>
         {[["catalog","📦","Catalogue"],["manual","✏️","Manuel"],["rapide","⚡","Rapide"],["annulations","🗑️","Annul."]].map(([k,ic,lb])=>{
           const on = view===k, danger = k==="annulations";
