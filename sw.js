@@ -1,7 +1,7 @@
 /* Caisse SaaS Pro — Service Worker (accès hors-ligne)
    ► Placer ce fichier à la racine, à côté de index.html.
    ► Incrémenter CACHE_VERSION à chaque déploiement de index.html. */
-const CACHE_VERSION = "caisse-v5";
+const CACHE_VERSION = "caisse-v6";
 const SHELL = "shell-" + CACHE_VERSION;
 const RUNTIME = "runtime-" + CACHE_VERSION;
 

@@ -54,7 +54,9 @@ input:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px rgba(120,140,255,.4
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 
 /* ── Catalogue en MOSAÏQUE ───────────────────────────────────── */
-.catalog-bar{position:sticky;top:-12px;z-index:5;padding:8px 0 4px;margin-top:-4px}
+.caisse-sticky{position:sticky;top:-12px;z-index:6;padding:12px 0 2px}
+.catalog-bar{padding:0}
+@media (max-height:520px){.caisse-sticky{position:static}}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
 .mosaic{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(var(--tile-min,148px),1fr));padding-bottom:8px}
@@ -100,7 +102,7 @@ input:focus,textarea:focus{outline:none;box-shadow:0 0 0 2px rgba(120,140,255,.4
 .qs-amount{font-size:clamp(28px,9vw,42px);font-weight:800;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @container (min-width:560px){
   .qs-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(290px,370px);gap:16px;align-items:start}
-  .qs-right{position:sticky;top:8px;bottom:auto;padding-top:0}
+  .qs-right{position:sticky;top:64px;bottom:auto;padding-top:0}
 }
 @media (max-height:520px){.qs-right{position:static}}
 /* iOS / Android : encoches et barre de navigation */
@@ -884,6 +886,48 @@ function BLEStatus({ T }) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  BARRE IMPRIMANTE COMPACTE (1 ligne ; détails repliables)
+// ══════════════════════════════════════════════════════════════════
+function PrinterDock({ T, useBLE, setUseBLE, ticketFormat, setTicketFormat }) {
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState({ status: "disconnected" });
+  const [connecting, setConnecting] = useState(false);
+  useEffect(() => { const unsub = printer.subscribe(setStatus); return unsub; }, []);
+  const connected = status.status === "connected";
+  const busy = status.status === "searching" || status.status === "reconnecting";
+  const color = !useBLE ? T.textMute : connected ? T.green : busy ? T.blue : T.red;
+  const label = !useBLE ? "Impression navigateur" : connected ? (status.name ? `Imprimante · ${status.name}` : "Imprimante connectée") : busy ? "Recherche imprimante…" : "Imprimante hors ligne";
+  const connect = async () => { setConnecting(true); try { await printer.connect(); } catch(e) {} setConnecting(false); };
+  const pick = (ble, fmt) => { setUseBLE(ble); if (fmt) { setTicketFormat(fmt); try { localStorage.setItem("pos_ticket_fmt", fmt); } catch(e){} } };
+  const seg = (on) => ({ flex: "1 0 auto", minHeight: 36, background: on ? T.accent : T.surface2, border: "none", borderRadius: 10, padding: "6px 10px", fontSize: 11, fontWeight: 700, color: on ? T.bg : T.text });
+  return (
+    <div style={{ background: T.surface, border: `1px solid ${color}55`, borderRadius: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 6px 4px 10px", minHeight: 38 }}>
+        <span style={{ width: 9, height: 9, borderRadius: "50%", background: color, flexShrink: 0 }} />
+        <button onClick={() => setOpen(o => !o)} aria-expanded={open}
+          style={{ flex: 1, minWidth: 0, textAlign: "left", background: "transparent", border: "none", padding: "6px 0", fontSize: 12, fontWeight: 600, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          🖨️ {label} <span style={{ color: T.textMute, fontWeight: 500 }}>· {useBLE ? ticketFormat : "PDF/écran"}</span>
+        </button>
+        {useBLE && !connected && !busy && (
+          <button onClick={connect} disabled={connecting} style={{ background: T.btnGreen.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 11, fontWeight: 700, color: T.green, flexShrink: 0 }}>{connecting ? "…" : "🔌 Connecter"}</button>
+        )}
+        <button onClick={() => setOpen(o => !o)} aria-label="Détails de l'imprimante" style={{ background: "transparent", border: "none", width: 32, height: 32, fontSize: 12, color: T.textSub, flexShrink: 0 }}>{open ? "▴" : "▾"}</button>
+      </div>
+      {open && (
+        <div style={{ padding: "2px 10px 10px" }}>
+          <BLEStatus T={T} />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button onClick={() => pick(true, "80mm")} style={seg(useBLE && ticketFormat === "80mm")}>🖨️ BLE 80mm</button>
+            <button onClick={() => pick(true, "57mm")} style={seg(useBLE && ticketFormat === "57mm")}>🖨️ BLE 57mm</button>
+            <button onClick={() => pick(false)} style={seg(!useBLE)}>🖥️ Navigateur</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  COMPOSANT VENTE RAPIDE
 // ══════════════════════════════════════════════════════════════════
 function VenteRapide({ T, addSale, flashMsg, printLabel }) {
@@ -1365,8 +1409,8 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg, isOnli
       <SubscriptionBanner T={T} shopId={session.shopId} />
 
       {(!isOnline || session._offline) && (
-        <div style={{background:T.orange+"22", borderBottom:`1px solid ${T.orange}55`, color:T.orange, fontSize:11, fontWeight:600, textAlign:"center", padding:"4px 8px", flexShrink:0}}>
-          📡 Mode hors-ligne — vos données sont sauvegardées localement et seront synchronisées dès le retour de la connexion
+        <div style={{background:T.orange+"22", borderBottom:`1px solid ${T.orange}55`, color:T.orange, fontSize:11, fontWeight:600, textAlign:"center", padding:"2px 8px", flexShrink:0, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>
+          📡 Hors-ligne · {products.length} article{products.length>1?"s":""} en mémoire{OfflineStore.syncedAt(session.shopId,"products") ? ` (sync ${timeAgo(OfflineStore.syncedAt(session.shopId,"products"))})` : ""} · ventes gardées localement
         </div>
       )}
       
@@ -1429,12 +1473,7 @@ function MainApp({ session, T, themeName, setThemeName, logout, flashMsg, isOnli
           )}
           <div className="desktop-grid" style={{flex:1, minHeight:0, position:"relative"}}>
           <div className="desktop-main" style={{padding:12}}>
-            <BLEStatus T={T} />
-            <div style={{display:"flex", gap:6, marginBottom:8, flexWrap:"wrap"}}>
-              <button onClick={()=>{ setUseBLE(true); const f="80mm"; setTicketFormat(f); localStorage.setItem("pos_ticket_fmt",f); }} style={{flex:"1 0 auto", background:useBLE&&ticketFormat==="80mm"?T.accent:T.surface, borderRadius:12, padding:6, fontSize:11, fontWeight:600, color:useBLE&&ticketFormat==="80mm"?T.bg:T.text}}>🖨️ BLE 80mm</button>
-              <button onClick={()=>{ setUseBLE(true); const f="57mm"; setTicketFormat(f); localStorage.setItem("pos_ticket_fmt",f); }} style={{flex:"1 0 auto", background:useBLE&&ticketFormat==="57mm"?T.accent:T.surface, borderRadius:12, padding:6, fontSize:11, fontWeight:600, color:useBLE&&ticketFormat==="57mm"?T.bg:T.text}}>🖨️ BLE 57mm</button>
-              <button onClick={()=>setUseBLE(false)} style={{flex:"1 0 auto", background:!useBLE?T.accent:T.surface, borderRadius:12, padding:6, fontSize:11, fontWeight:600, color:!useBLE?T.bg:T.text}}>🖥️ Navigateur</button>
-            </div>
+            <PrinterDock T={T} useBLE={useBLE} setUseBLE={setUseBLE} ticketFormat={ticketFormat} setTicketFormat={setTicketFormat} />
             <CaisseContent T={T} products={products} addSale={addSale} items={items} setItems={setItems} total={total} flashMsg={flashMsg} sales={sales} cancelSale={cancelSale} isOnline={isOnline && !session._offline} syncedAt={OfflineStore.syncedAt(session.shopId, "products")} printLabel={useBLE ? `🖨️ Valider + ticket (BLE ${ticketFormat})` : "🖨️ Valider + imprimer"} onViewChange={setCaisseView} />
             {/* Spacer so FAB doesn't cover last product card */}
             <div style={{height:80}} />
@@ -1770,15 +1809,14 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
   
   return (
     <div style={{display:"flex", flexDirection:"column", minHeight:"100%"}}>
+      <div className="caisse-sticky" style={{background:T.bg}}>
       <div className="chips" style={{marginBottom:6, flexShrink:0}}>
         {[["catalog","📦","Catalogue"],["manual","✏️","Manuel"],["rapide","⚡","Rapide"],["annulations","🗑️","Annul."]].map(([k,ic,lb])=>{
           const on = view===k, danger = k==="annulations";
           return <button key={k} onClick={()=>setView(k)} style={{flex:"1 0 auto", minHeight:40, background:on?(danger?T.red:T.accent):T.surface, border:`1px solid ${on?"transparent":T.border}`, borderRadius:12, padding:"8px 12px", fontWeight:700, fontSize:12, color:on?(danger?"#fff":T.bg):T.text}}>{ic} {lb}</button>;
         })}
       </div>
-
-      {view === "catalog" && (
-        <>
+        {view === "catalog" && (
           <div className="catalog-bar" style={{background:T.bg}}>
             <div style={{display:"flex", gap:6, marginBottom:8}}>
               <div style={{flex:1, position:"relative", minWidth:0}}>
@@ -1811,12 +1849,13 @@ function CaisseContent({ T, products, addSale, items, setItems, total, flashMsg,
               </div>
             )}
           </div>
+        )}
+      </div>
 
-          {!isOnline && (
-            <div className="offline-chip" style={{background:T.orange+"22", color:T.orange, border:`1px solid ${T.orange}44`}}>
-              📴 Catalogue hors-ligne · {allProds.length} article{allProds.length>1?"s":""} disponible{allProds.length>1?"s":""}{syncedAt ? ` · synchronisé ${timeAgo(syncedAt)}` : ""}
-            </div>
-          )}
+      {view === "catalog" && (
+        <>
+
+
 
           {allProds.length === 0 ? (
             <div style={{textAlign:"center", padding:"48px 16px", color:T.textMute}}>
@@ -3826,11 +3865,35 @@ function DevDashboard({ T, themeName, setThemeName, logout, flashMsg }) {
   const [loading, setLoading] = useState(true);
   const [editingPlan, setEditingPlan] = useState(null);
   
+  const [error, setError] = useState(null);
+  const [slow, setSlow] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [reloadKey, setReloadKey] = useState(0);
+
   useEffect(() => {
-    if(!db) return;
-    const unsub = db.collection("shops").onSnapshot(snap => { setShops(snap.docs.map(d=>({id:d.id, ...d.data()}))); setLoading(false); });
-    return unsub;
-  }, []);
+    if (!db) { setError("Firebase n'est pas initialisé (script bloqué ou démarrage hors-ligne)."); setLoading(false); return; }
+    setLoading(true); setError(null); setSlow(false);
+    // 1) affichage immédiat de la dernière liste connue (sans mots de passe)
+    try { const c = JSON.parse(localStorage.getItem("pos_dev_shops") || "null"); if (c && c.length) { setShops(c); setLoading(false); } } catch(e){}
+    const timer = setTimeout(() => setSlow(true), 8000);
+    // 2) temps réel. Un cache vide n'est PAS « aucun commerce » : on attend la réponse du serveur.
+    const unsub = db.collection("shops").onSnapshot(snap => {
+      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (snap.metadata.fromCache && rows.length === 0) return;
+      setShops(rows); setLoading(false); setError(null);
+      if (!snap.metadata.fromCache) {
+        clearTimeout(timer); setSlow(false);
+        try { localStorage.setItem("pos_dev_shops", JSON.stringify(rows.map(({ password, adminPin, ...r }) => r))); } catch(e){}
+      }
+    }, err => {
+      setError(err && err.code === "permission-denied"
+        ? "Accès refusé : les règles Firestore interdisent la lecture de la collection « shops » pour ce compte."
+        : "Erreur Firestore : " + ((err && (err.code || err.message)) || "inconnue"));
+      setLoading(false);
+    });
+    return () => { clearTimeout(timer); unsub(); };
+  }, [reloadKey]);
   
   const updateSubscription = async (shopId, newPlan) => {
     const shop = shops.find(s => s.id === shopId);
@@ -3867,9 +3930,23 @@ function DevDashboard({ T, themeName, setThemeName, logout, flashMsg }) {
     return T.green;
   };
   
+  const stateOf = (shop) => {
+    if (!shop.active) return "suspended";
+    if (!shop.subscriptionEnd) return "none";
+    const d = getDaysLeft(shop.subscriptionEnd);
+    return d <= 0 ? "expired" : d <= 7 ? "soon" : "ok";
+  };
+  const counts = { all: shops.length, ok: 0, soon: 0, expired: 0, suspended: 0, none: 0 };
+  shops.forEach(sh => { counts[stateOf(sh)]++; });
+  const q = norm(search);
+  const visibleShops = shops
+    .filter(sh => (filter === "all" || stateOf(sh) === filter) && (!q || norm(sh.shopName).includes(q) || norm(sh.ownerName).includes(q) || norm(sh.whatsapp).includes(q)))
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const FILTERS = [["all", "Tous", T.textSub], ["ok", "✅ Actifs", T.green], ["soon", "⚠️ Bientôt", T.orange], ["expired", "⛔ Expirés", T.red], ["suspended", "🔒 Suspendus", T.red]];
+
   return (
     <div style={{height:"100dvh", background:T.bg, display:"flex", flexDirection:"column"}}>
-      <div style={{background:T.header, padding:"8px 12px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap"}}>
+      <div style={{background:T.header, padding:"8px 12px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap", flexShrink:0}}>
         <div><div style={{fontSize:9, color:T.textMute}}>Développeur</div><div style={{fontFamily:"'Outfit'", fontWeight:800, color:T.purple, fontSize:13}}>Gestion abonnements + BLE</div></div>
         <div style={{display:"flex", gap:6, alignItems:"center"}}>
           <div className="hdr-themes theme-toggle" style={{background:T.surface2}}>
@@ -3886,7 +3963,38 @@ function DevDashboard({ T, themeName, setThemeName, logout, flashMsg }) {
           <div style={{fontWeight:700}}>🏪 Multi-commerce SaaS</div>
           <div style={{fontSize:11, color:T.textMute}}>{shops.length} commerces · Gestion des abonnements (mensuel/trimestriel/annuel) · Bande défilante pour alertes</div>
         </div>
-        {loading ? <div className="spin" style={{width:30,height:30,border:`2px solid ${T.border}`,borderTopColor:T.accent,borderRadius:"50%",margin:"20px auto"}}></div> : shops.map(shop => {
+        {error && (
+          <div style={{background:T.btnRed.bg, border:`1px solid ${T.red}66`, borderRadius:14, padding:12, marginBottom:12, color:T.red, fontSize:12}}>
+            <div style={{fontWeight:800, marginBottom:4}}>❌ Impossible de charger les commerces</div>
+            <div style={{marginBottom:8}}>{error}</div>
+            <button onClick={() => setReloadKey(k => k + 1)} style={{background:T.red, color:"#fff", border:"none", borderRadius:10, padding:"8px 14px", fontWeight:700, fontSize:12}}>🔄 Réessayer</button>
+          </div>
+        )}
+        {!error && slow && (loading || shops.length === 0) && (
+          <div style={{background:T.orange+"22", border:`1px solid ${T.orange}55`, borderRadius:14, padding:12, marginBottom:12, color:T.orange, fontSize:12}}>
+            ⏳ Le serveur met du temps à répondre (réseau faible ou hors-ligne). {shops.length ? "Affichage de la dernière liste connue." : ""}
+            <button onClick={() => setReloadKey(k => k + 1)} style={{marginLeft:8, background:"transparent", border:`1px solid ${T.orange}`, color:T.orange, borderRadius:10, padding:"4px 10px", fontSize:11, fontWeight:700}}>Réessayer</button>
+          </div>
+        )}
+        {shops.length > 0 && (
+          <div style={{position:"sticky", top:-12, zIndex:5, background:T.bg, padding:"4px 0 6px"}}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher un commerce, un propriétaire, un numéro…"
+              style={{width:"100%", background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:12, padding:"10px 12px", color:T.text, fontSize:13, marginBottom:8}} />
+            <div className="chips">
+              {FILTERS.map(([k, l, c]) => (
+                <button key={k} onClick={()=>setFilter(k)} aria-pressed={filter===k}
+                  style={{flex:"0 0 auto", minHeight:32, background:filter===k?T.accent:T.surface2, color:filter===k?T.bg:T.text, border:"none", borderRadius:20, padding:"4px 13px", fontSize:11, fontWeight:700, whiteSpace:"nowrap"}}>{l} · {counts[k]}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        {loading ? <div className="spin" style={{width:30,height:30,border:`2px solid ${T.border}`,borderTopColor:T.accent,borderRadius:"50%",margin:"20px auto"}}></div>
+        : visibleShops.length === 0 ? (
+          <div style={{textAlign:"center", padding:"40px 16px", color:T.textMute}}>
+            <div style={{fontSize:36, marginBottom:6}}>🏪</div>
+            <div style={{fontSize:13, color:T.textSub}}>{shops.length === 0 ? (error ? "Liste indisponible" : "Aucun commerce enregistré") : "Aucun commerce ne correspond à la recherche"}</div>
+          </div>
+        ) : visibleShops.map(shop => {
           const daysLeft = shop.subscriptionEnd ? getDaysLeft(shop.subscriptionEnd) : 0;
           const statusColor = getStatusColor(shop);
           return (
