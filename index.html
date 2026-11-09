@@ -2283,6 +2283,7 @@ function CommandesFournisseur({ T, products, flashMsg, shopId, updateStock }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [view, setView] = useState("new"); // "new" | "history"
+  const [pickerLigneId, setPickerLigneId] = useState(null); // ligne dont on choisit le produit
 
   useEffect(() => {
     if (!db || !shopId) { setLoading(false); return; }
@@ -2399,14 +2400,17 @@ function CommandesFournisseur({ T, products, flashMsg, shopId, updateStock }) {
                   <button onClick={() => supprimerLigne(ligne.id)} style={{ background: T.btnRed.bg, border: "none", borderRadius: 8, width: 28, height: 28, color: T.red, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
                 </div>
 
-                {/* Sélecteur produit */}
-                <select value={ligne.produitId} onChange={e => updateLigne(ligne.id, "produitId", e.target.value)}
-                  style={{ width: "100%", background: T.inputBg, border: `1px solid ${T.inputBd}`, borderRadius: 10, padding: "9px 10px", marginBottom: 8, color: T.text, fontSize: 12 }}>
-                  <option value="">— Sélectionner produit (optionnel) —</option>
-                  {products.filter(p => p.active !== false).map(p => (
-                    <option key={p.id} value={p.id}>{p.name}{p.stock !== undefined && p.stock !== null && p.stock !== -1 ? ` (stock: ${p.stock})` : ""}</option>
-                  ))}
-                </select>
+                {/* Sélecteur produit (fenêtre de recherche) */}
+                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                  <button onClick={() => setPickerLigneId(ligne.id)}
+                    style={{ flex: 1, textAlign: "left", background: T.inputBg, border: `1px solid ${T.inputBd}`, borderRadius: 10, padding: "9px 10px", color: ligne.produitId ? T.text : T.textMute, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {ligne.produitId ? `📦 ${(products.find(p => p.id === ligne.produitId) || {}).name || ligne.nom}` : "🔍 Rechercher un produit (optionnel)"}
+                  </button>
+                  {ligne.produitId && (
+                    <button onClick={() => updateLigne(ligne.id, "produitId", "")} aria-label="Retirer le produit"
+                      style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, width: 36, color: T.textMute, fontSize: 14 }}>✕</button>
+                  )}
+                </div>
 
                 {/* Libellé libre */}
                 <input placeholder="Libellé / description *" value={ligne.libelle} onChange={e => updateLigne(ligne.id, "libelle", e.target.value)}
@@ -2512,6 +2516,11 @@ function CommandesFournisseur({ T, products, flashMsg, shopId, updateStock }) {
             );
           })}
         </div>
+      )}
+      {pickerLigneId !== null && (
+        <ProductSearchModal T={T} products={products} title="🔍 Choisir un produit"
+          onClose={() => setPickerLigneId(null)}
+          onPick={(prod) => { updateLigne(pickerLigneId, "produitId", prod.id); setPickerLigneId(null); }} />
       )}
     </div>
   );
@@ -2958,16 +2967,91 @@ function SectionVentes({ T, sales, hasBeneficeData }) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  RECHERCHE DE PRODUITS (stock / réappro / commandes fournisseur)
+// ══════════════════════════════════════════════════════════════════
+const productMatches = (p, q) => {
+  const words = norm(q).split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = norm(p.name) + " " + norm(p.category) + " " + norm(p.barcode);
+  return words.every(w => hay.includes(w));
+};
+
+function ProductSearchInput({ T, value, onChange, resultCount, placeholder }) {
+  return (
+    <div style={{marginBottom:10}}>
+      <div style={{position:"relative"}}>
+        <input type="text" inputMode="search" enterKeyHint="search" autoComplete="off"
+          placeholder={placeholder || "🔍 Nom, catégorie ou code-barres…"} value={value}
+          onChange={e=>onChange(e.target.value)}
+          style={{width:"100%", background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:12, padding:"11px 34px 11px 12px", color:T.text, fontSize:14}} />
+        {value && <button onClick={()=>onChange("")} aria-label="Effacer la recherche" style={{position:"absolute", right:4, top:0, bottom:0, margin:"auto 0", height:30, width:30, background:"transparent", border:"none", color:T.textMute, fontSize:15}}>✕</button>}
+      </div>
+      {value.trim() && <div style={{fontSize:10, color:T.textMute, marginTop:4}}>{resultCount} résultat(s)</div>}
+    </div>
+  );
+}
+
+function ProductSearchModal({ T, products, onClose, onPick, title }) {
+  const [q, setQ] = useState("");
+  const inputRef = useRef(null);
+  useEffect(() => { const t = setTimeout(() => inputRef.current && inputRef.current.focus(), 60); return () => clearTimeout(t); }, []);
+  const all = products.filter(p => p.active !== false);
+  const list = all.filter(p => productMatches(p, q));
+  const shown = list.slice(0, 80);
+  const onKey = (e) => {
+    if (e.key === "Escape") { onClose(); return; }
+    if (e.key !== "Enter") return;
+    const code = q.trim(); if (!code) return;
+    const hit = all.find(p => p.barcode && String(p.barcode) === code) || (list.length === 1 ? list[0] : null);
+    if (hit) onPick(hit);
+  };
+  const stockLabel = (p) => (p.stock === undefined || p.stock === null || p.stock === -1) ? "♾️ Illimité" : `Stock: ${p.stock}`;
+  const stockColor = (p) => (p.stock === undefined || p.stock === null || p.stock === -1) ? T.textMute : (p.stock <= 0 ? T.red : p.stock <= 5 ? T.orange : T.green);
+  return (
+    <div onClick={onClose} style={{position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:1300}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.bg, width:"100%", maxWidth:520, maxHeight:"85vh", borderRadius:"20px 20px 0 0", padding:14, display:"flex", flexDirection:"column", color:T.text}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
+          <div style={{fontSize:14, fontWeight:800, color:T.accent}}>{title || "🔍 Rechercher un produit"}</div>
+          <button onClick={onClose} aria-label="Fermer" style={{background:T.surface, border:"none", borderRadius:8, width:32, height:32, color:T.text, fontSize:16}}>✕</button>
+        </div>
+        <div style={{position:"relative", marginBottom:8}}>
+          <input ref={inputRef} type="text" inputMode="search" enterKeyHint="search" autoComplete="off"
+            placeholder="🔍 Nom, catégorie ou code-barres…" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={onKey}
+            style={{width:"100%", background:T.inputBg, border:`1px solid ${T.inputBd}`, borderRadius:12, padding:"11px 34px 11px 12px", color:T.text, fontSize:14}} />
+          {q && <button onClick={()=>{setQ(""); inputRef.current && inputRef.current.focus();}} aria-label="Effacer" style={{position:"absolute", right:4, top:0, bottom:0, margin:"auto 0", height:30, width:30, background:"transparent", border:"none", color:T.textMute, fontSize:15}}>✕</button>}
+        </div>
+        <div style={{fontSize:10, color:T.textMute, marginBottom:6}}>{list.length} produit(s){list.length > shown.length ? ` · affichage des ${shown.length} premiers, précisez la recherche` : ""}</div>
+        <div style={{flex:1, overflowY:"auto"}}>
+          {shown.map(p => (
+            <button key={p.id} onClick={()=>onPick(p)} style={{display:"flex", justifyContent:"space-between", alignItems:"center", width:"100%", textAlign:"left", background:T.surface, border:`1px solid ${T.border}`, borderRadius:12, padding:"10px 12px", marginBottom:6, color:T.text}}>
+              <span style={{minWidth:0}}>
+                <span style={{display:"block", fontSize:13, fontWeight:600}}>{p.name}</span>
+                {(p.category || p.barcode) && <span style={{display:"block", fontSize:10, color:T.textMute}}>{[p.category, p.barcode].filter(Boolean).join(" · ")}</span>}
+              </span>
+              <span style={{fontSize:11, fontWeight:700, color:stockColor(p), flexShrink:0, marginLeft:8}}>{stockLabel(p)}</span>
+            </button>
+          ))}
+          {list.length === 0 && <div style={{color:T.textMute, fontSize:12, textAlign:"center", padding:20}}>Aucun produit trouvé</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  MODULES "HORS ADMIN" — copies accessibles sans code PIN propriétaire
 // ══════════════════════════════════════════════════════════════════
 function StockModuleExterne({ T, products, stockMovements, updateStock }) {
+  const [q, setQ] = useState("");
   const activeProds = products.filter(p=>p.active!==false);
+  const visibleProds = activeProds.filter(p=>productMatches(p,q));
   return (
     <div style={{flex:1, overflowY:"auto", padding:12}}>
       <div style={{fontSize:15, fontWeight:800, marginBottom:12, color:T.accent}}>📦 Gestion de stock</div>
       <div style={{marginBottom:16}}>
         <div style={{fontSize:12, fontWeight:600, marginBottom:8}}>📦 Niveaux de stock</div>
-        {activeProds.map(p=>(
+        <ProductSearchInput T={T} value={q} onChange={setQ} resultCount={visibleProds.length} />
+        {visibleProds.map(p=>(
           <div key={p.id} style={{background:T.surface, borderRadius:12, padding:12, marginBottom:8}}>
             <div style={{display:"flex", justifyContent:"space-between"}}><span>{p.name}</span><span>{fmtPrice(p.price)}</span></div>
             <div style={{marginTop:6, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
@@ -2979,6 +3063,7 @@ function StockModuleExterne({ T, products, stockMovements, updateStock }) {
           </div>
         ))}
         {activeProds.length===0 && <div style={{color:T.textMute, fontSize:12}}>Aucun produit</div>}
+        {activeProds.length>0 && visibleProds.length===0 && <div style={{color:T.textMute, fontSize:12}}>Aucun produit ne correspond à « {q} »</div>}
       </div>
       <div>
         <div style={{fontSize:12, fontWeight:600, marginBottom:8}}>📋 Mouvements récents</div>
@@ -3213,6 +3298,8 @@ function StatsModuleExterne({ T, products, sales, credits, shopId, shopName, wha
 
 function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, flashMsg, shopId, stockMovements, updateStock, updateAdminPin, credits, payCredit, caissiers, saveCaissier, deleteCaissier, loginCaissier, currentCaissier, shopLogo, setShopLogo }) {
   const [tab, setTab] = useState("stats");
+  const [stockQ, setStockQ] = useState("");
+  const [reapproQ, setReapproQ] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editProd, setEditProd] = useState(null);
   const [pName, setPName] = useState(""); const [pPrice, setPPrice] = useState(""); const [pPrixAchat, setPPrixAchat] = useState("");
@@ -3602,7 +3689,8 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
       {tab==="stock" && (
         <div>
           <div style={{marginBottom:16}}><div style={{fontSize:12, fontWeight:600, marginBottom:8}}>📦 Niveaux de stock</div>
-            {products.filter(p=>p.active!==false).map(p=>(
+            <ProductSearchInput T={T} value={stockQ} onChange={setStockQ} resultCount={products.filter(p=>p.active!==false && productMatches(p,stockQ)).length} />
+            {products.filter(p=>p.active!==false && productMatches(p,stockQ)).map(p=>(
               <div key={p.id} style={{background:T.surface, borderRadius:12, padding:12, marginBottom:8}}>
                 <div style={{display:"flex", justifyContent:"space-between"}}><span>{p.name}</span><span>{fmtPrice(p.price)}</span></div>
                 <div style={{marginTop:6, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
@@ -3628,11 +3716,13 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
       {/* ── RÉAPPRO ── */}
       {tab==="reappro" && (
         <div>
+          <ProductSearchInput T={T} value={reapproQ} onChange={setReapproQ} placeholder="🔍 Rechercher un produit (nom, catégorie, code-barres)…" resultCount={products.filter(p=>p.stock!==undefined&&p.stock!==null&&p.stock!==-1&&productMatches(p,reapproQ)).length} />
           <div style={{background:T.surface, borderRadius:16, padding:14, marginBottom:12}}>
             <div style={{fontSize:13, fontWeight:700, marginBottom:4}}>🔄 Produits à réapprovisionner</div>
             <div style={{fontSize:11, color:T.textMute, marginBottom:12}}>Stock ≤ 5 unités</div>
             {lowStockProds.length===0 ? <div style={{color:T.green, fontSize:12}}>✅ Tous les stocks sont OK</div> :
-              lowStockProds.map(p=>(
+              lowStockProds.filter(p=>productMatches(p,reapproQ)).length===0 ? <div style={{color:T.textMute, fontSize:12}}>Aucun produit à réapprovisionner ne correspond à la recherche</div> :
+              lowStockProds.filter(p=>productMatches(p,reapproQ)).map(p=>(
                 <div key={p.id} style={{background:T.surface2, borderRadius:12, padding:12, marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
                   <div>
                     <div style={{fontWeight:600}}>{p.name}</div>
@@ -3645,12 +3735,13 @@ function OwnerContent({ T, shopName, whatsapp, products, setProducts, sales, fla
           </div>
           <div style={{background:T.surface, borderRadius:16, padding:14}}>
             <div style={{fontSize:13, fontWeight:700, marginBottom:10}}>📦 Réapprovisionner n'importe quel produit</div>
-            {products.filter(p=>p.stock!==undefined&&p.stock!==null&&p.stock!==-1).map(p=>(
+            {products.filter(p=>p.stock!==undefined&&p.stock!==null&&p.stock!==-1&&productMatches(p,reapproQ)).map(p=>(
               <div key={p.id} style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderBottom:`1px solid ${T.border}`}}>
                 <span style={{fontSize:12}}>{p.name} <span style={{color:T.textMute}}>({p.stock})</span></span>
                 <button onClick={()=>{const q=prompt(`Quantité à ajouter pour ${p.name} ?`); if(q&&parseInt(q)>0) reappro(p.id, q);}} style={{background:T.btnGreen.bg, border:"none", borderRadius:8, padding:"3px 10px", fontSize:11}}>+ Stock</button>
               </div>
             ))}
+            {reapproQ.trim() && products.filter(p=>p.stock!==undefined&&p.stock!==null&&p.stock!==-1&&productMatches(p,reapproQ)).length===0 && <div style={{color:T.textMute, fontSize:12}}>Aucun produit ne correspond à « {reapproQ} »</div>}
           </div>
         </div>
       )}
